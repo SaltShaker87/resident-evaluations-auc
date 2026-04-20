@@ -4,15 +4,27 @@ import { Plus, Search, Upload, X, Users } from 'lucide-react';
 import { getResidents, createResident, bulkImportResidents } from '../api';
 import Avatar from '../components/Avatar';
 
+const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', fellowship: 'Fellowship', other: 'Other' };
+
 function AddResidentModal({ onClose, onCreated }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [pgyYear, setPgyYear] = useState(1);
+  const [medicalSchool, setMedicalSchool] = useState('');
+  const [interests, setInterests] = useState('');
+  const [track, setTrack] = useState('none');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) return;
-    await createResident({ first_name: firstName.trim(), last_name: lastName.trim(), pgy_year: pgyYear });
+    await createResident({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      pgy_year: pgyYear,
+      medical_school: medicalSchool.trim() || null,
+      interests: interests.trim() || null,
+      track,
+    });
     onCreated();
   };
 
@@ -39,6 +51,22 @@ function AddResidentModal({ onClose, onCreated }) {
               <option value={3}>PGY-3</option>
               <option value={4}>PGY-4</option>
             </select>
+          </div>
+          <div className="form-group">
+            <label>Medical School</label>
+            <input className="form-input" value={medicalSchool} onChange={(e) => setMedicalSchool(e.target.value)} placeholder="e.g. Johns Hopkins" />
+          </div>
+          <div className="form-group">
+            <label>Track</label>
+            <select className="form-select" value={track} onChange={(e) => setTrack(e.target.value)}>
+              {Object.entries(TRACK_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Interests</label>
+            <input className="form-input" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. cardiology, global health" />
           </div>
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
@@ -222,6 +250,9 @@ export default function ResidentList({ showToast }) {
                 <h3>Dr. {r.first_name} {r.last_name}</h3>
                 <div className="resident-card__meta">
                   <span className="tag tag--pgy">PGY-{r.pgy_year}</span>
+                  {r.track && r.track !== 'none' && (
+                    <span className="tag tag--track">{TRACK_LABELS[r.track] ?? r.track}</span>
+                  )}
                   {r.total_notes > 0 && (
                     <span className="text-sm text-muted">{r.total_notes} note{r.total_notes !== 1 ? 's' : ''}</span>
                   )}
@@ -229,6 +260,12 @@ export default function ResidentList({ showToast }) {
                     <span className="badge badge--alert">{r.open_followups}</span>
                   )}
                 </div>
+                {r.medical_school && (
+                  <p className="text-sm text-muted resident-card__detail">{r.medical_school}</p>
+                )}
+                {r.interests && (
+                  <p className="text-sm text-muted resident-card__detail resident-card__interests">{r.interests}</p>
+                )}
               </div>
             </div>
           ))}

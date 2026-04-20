@@ -105,6 +105,15 @@ def init_db():
                 FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE CASCADE
             );
         """)
+        for col_sql in [
+            "ALTER TABLE residents ADD COLUMN medical_school TEXT",
+            "ALTER TABLE residents ADD COLUMN interests TEXT",
+            "ALTER TABLE residents ADD COLUMN track TEXT DEFAULT 'none'",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except Exception:
+                pass
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -115,6 +124,9 @@ class ResidentCreate(BaseModel):
     last_name: str
     pgy_year: int
     start_date: Optional[str] = None
+    medical_school: Optional[str] = None
+    interests: Optional[str] = None
+    track: Optional[str] = None
 
 class ResidentUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -122,6 +134,9 @@ class ResidentUpdate(BaseModel):
     pgy_year: Optional[int] = None
     start_date: Optional[str] = None
     active: Optional[bool] = None
+    medical_school: Optional[str] = None
+    interests: Optional[str] = None
+    track: Optional[str] = None
 
 class BulkResidentImport(BaseModel):
     residents: List[ResidentCreate]
@@ -203,9 +218,10 @@ def create_resident(resident: ResidentCreate):
     rid = str(uuid.uuid4())[:8]
     with db_connection() as conn:
         conn.execute(
-            """INSERT INTO residents (id, first_name, last_name, pgy_year, start_date)
-               VALUES (?, ?, ?, ?, ?)""",
-            (rid, resident.first_name, resident.last_name, resident.pgy_year, resident.start_date)
+            """INSERT INTO residents (id, first_name, last_name, pgy_year, start_date, medical_school, interests, track)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (rid, resident.first_name, resident.last_name, resident.pgy_year, resident.start_date,
+             resident.medical_school, resident.interests, resident.track or 'none')
         )
     return {"id": rid, "message": "Resident created"}
 

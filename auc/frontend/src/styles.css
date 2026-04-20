@@ -348,6 +348,12 @@ body {
   font-weight: 600;
 }
 
+.tag--track {
+  background: var(--blue-50);
+  color: var(--blue-700);
+  font-weight: 500;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -486,6 +492,17 @@ body {
   gap: 0.5rem;
   font-size: 0.8125rem;
   color: var(--slate-500);
+}
+
+.resident-card__detail {
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resident-card__interests {
+  font-style: italic;
 }
 
 /* ---- Detail page sections ---- */

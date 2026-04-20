@@ -369,14 +369,26 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
 
 // ---- Edit Resident Modal ----
 
+const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', fellowship: 'Fellowship', other: 'Other' };
+
 function EditResidentModal({ resident, onClose, onSaved }) {
   const [firstName, setFirstName] = useState(resident.first_name);
   const [lastName, setLastName] = useState(resident.last_name);
   const [pgyYear, setPgyYear] = useState(resident.pgy_year);
+  const [medicalSchool, setMedicalSchool] = useState(resident.medical_school ?? '');
+  const [interests, setInterests] = useState(resident.interests ?? '');
+  const [track, setTrack] = useState(resident.track ?? 'none');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await updateResident(resident.id, { first_name: firstName, last_name: lastName, pgy_year: pgyYear });
+    await updateResident(resident.id, {
+      first_name: firstName,
+      last_name: lastName,
+      pgy_year: pgyYear,
+      medical_school: medicalSchool.trim() || null,
+      interests: interests.trim() || null,
+      track,
+    });
     onSaved();
   };
 
@@ -403,6 +415,22 @@ function EditResidentModal({ resident, onClose, onSaved }) {
               <option value={3}>PGY-3</option>
               <option value={4}>PGY-4</option>
             </select>
+          </div>
+          <div className="form-group">
+            <label>Medical School</label>
+            <input className="form-input" value={medicalSchool} onChange={(e) => setMedicalSchool(e.target.value)} placeholder="e.g. Johns Hopkins" />
+          </div>
+          <div className="form-group">
+            <label>Track</label>
+            <select className="form-select" value={track} onChange={(e) => setTrack(e.target.value)}>
+              {Object.entries(TRACK_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Interests</label>
+            <input className="form-input" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. cardiology, global health" />
           </div>
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
