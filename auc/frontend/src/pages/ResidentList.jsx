@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Upload, X } from 'lucide-react';
+import { Plus, Search, Upload, X, Users } from 'lucide-react';
 import { getResidents, createResident, bulkImportResidents } from '../api';
 import Avatar from '../components/Avatar';
 
