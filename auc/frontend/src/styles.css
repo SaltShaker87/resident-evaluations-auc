@@ -348,6 +348,11 @@ body {
   font-weight: 600;
 }
 
+.tag--pgy-1 { background: var(--green-50);  color: var(--green-700); }
+.tag--pgy-2 { background: var(--blue-50);   color: var(--blue-700);  }
+.tag--pgy-3 { background: var(--amber-50);  color: var(--amber-700); }
+.tag--pgy-4 { background: var(--red-50);    color: var(--red-700);   }
+
 .tag--track {
   background: var(--blue-50);
   color: var(--blue-700);

@@ -249,7 +249,7 @@ export default function ResidentList({ showToast }) {
               <div className="resident-card__info">
                 <h3>Dr. {r.first_name} {r.last_name}</h3>
                 <div className="resident-card__meta">
-                  <span className="tag tag--pgy">PGY-{r.pgy_year}</span>
+                  <span className={`tag tag--pgy tag--pgy-${r.pgy_year}`}>PGY-{r.pgy_year}</span>
                   {r.track && r.track !== 'none' && (
                     <span className="tag tag--track">{TRACK_LABELS[r.track] ?? r.track}</span>
                   )}

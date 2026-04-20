@@ -538,7 +538,7 @@ export default function ResidentDetail({ showToast }) {
         <div className="detail-header__info">
           <h1>Dr. {resident.first_name} {resident.last_name}</h1>
           <div className="detail-header__meta">
-            <span className="tag tag--pgy">PGY-{resident.pgy_year}</span>
+            <span className={`tag tag--pgy tag--pgy-${resident.pgy_year}`}>PGY-{resident.pgy_year}</span>
             <span className="text-sm text-muted">{resident.total_notes} note{resident.total_notes !== 1 ? 's' : ''}</span>
             {resident.open_followups > 0 && (
               <span className="badge badge--alert">{resident.open_followups} open follow-up{resident.open_followups !== 1 ? 's' : ''}</span>
