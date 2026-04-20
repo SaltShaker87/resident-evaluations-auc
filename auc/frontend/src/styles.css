@@ -529,6 +529,31 @@ body {
   margin-top: 0.35rem;
 }
 
+.detail-header__profile {
+  display: flex;
+  gap: 2rem;
+  margin-top: 0.75rem;
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.profile-field__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate-400);
+}
+
+.profile-field__value {
+  font-size: 0.875rem;
+  color: var(--slate-700);
+}
+
 .detail-header__actions {
   margin-left: auto;
   display: flex;

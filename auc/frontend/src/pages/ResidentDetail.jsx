@@ -544,6 +544,20 @@ export default function ResidentDetail({ showToast }) {
               <span className="badge badge--alert">{resident.open_followups} open follow-up{resident.open_followups !== 1 ? 's' : ''}</span>
             )}
           </div>
+          <div className="detail-header__profile">
+            <div className="profile-field">
+              <span className="profile-field__label">Medical School</span>
+              <span className="profile-field__value">{resident.medical_school || 'None'}</span>
+            </div>
+            <div className="profile-field">
+              <span className="profile-field__label">Track</span>
+              <span className="profile-field__value">{TRACK_LABELS[resident.track] ?? 'None'}</span>
+            </div>
+            <div className="profile-field">
+              <span className="profile-field__label">Interests</span>
+              <span className="profile-field__value">{resident.interests || 'None'}</span>
+            </div>
+          </div>
         </div>
         <div className="detail-header__actions">
           <button className="btn btn--secondary btn--sm" onClick={() => setShowEdit(true)}>
