@@ -90,8 +90,11 @@ export const deleteFollowup = (id) =>
 export const getSummaries = (residentId) =>
   request(`/residents/${residentId}/summaries`);
 
-export const generateSummary = (residentId) =>
-  request(`/residents/${residentId}/generate-summary`, { method: 'POST' });
+// Returns raw Response for streaming — caller reads body as NDJSON stream
+export const generateSummary = (residentId, model = null) => {
+  const qs = model ? `?model=${encodeURIComponent(model)}` : '';
+  return fetch(`${BASE}/residents/${residentId}/generate-summary${qs}`, { method: 'POST' });
+};
 
 export const approveSummary = (summaryId, approvedText) =>
   request(`/summaries/${summaryId}/approve`, {
@@ -101,3 +104,6 @@ export const approveSummary = (summaryId, approvedText) =>
 
 export const deleteSummary = (id) =>
   request(`/summaries/${id}`, { method: 'DELETE' });
+
+// Ollama
+export const getOllamaModels = () => request('/ollama/models');

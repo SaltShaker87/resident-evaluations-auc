@@ -14,7 +14,7 @@ from contextlib import contextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -24,12 +24,12 @@ import httpx
 # Configuration
 # ---------------------------------------------------------------------------
 
+from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 PHOTOS_DIR = DATA_DIR / "photos"
 DB_PATH = DATA_DIR / "auc.db"
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
 
 # Ensure directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,11 +104,25 @@ def init_db():
                 approved_at TEXT,
                 FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS medhub_evaluations (
+                id TEXT PRIMARY KEY,
+                resident_id TEXT NOT NULL,
+                import_date TEXT DEFAULT (datetime('now')),
+                rotation_name TEXT,
+                evaluator_name TEXT,
+                evaluation_date TEXT,
+                competency_domain TEXT,
+                score REAL,
+                comments TEXT,
+                FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE CASCADE
+            );
         """)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
             "ALTER TABLE residents ADD COLUMN interests TEXT",
             "ALTER TABLE residents ADD COLUMN track TEXT DEFAULT 'none'",
+            "ALTER TABLE notes ADD COLUMN source TEXT",
         ]:
             try:
                 conn.execute(col_sql)
@@ -146,16 +160,20 @@ class NoteCreate(BaseModel):
     acgme_domain: Optional[str] = None
     sentiment: Optional[str] = "neutral"
     priority: Optional[str] = "routine"
+    source: Optional[str] = None
+    note_date: Optional[str] = None
 
 class NoteUpdate(BaseModel):
     content: Optional[str] = None
     acgme_domain: Optional[str] = None
     sentiment: Optional[str] = None
     priority: Optional[str] = None
+    source: Optional[str] = None
 
 class FollowupCreate(BaseModel):
     description: str
     priority: Optional[str] = "routine"
+    note_date: Optional[str] = None
 
 class SummaryApproval(BaseModel):
     approved_text: str
@@ -349,11 +367,12 @@ def list_notes(resident_id: str, domain: Optional[str] = None):
 @app.post("/api/residents/{resident_id}/notes")
 def create_note(resident_id: str, note: NoteCreate):
     nid = str(uuid.uuid4())[:8]
+    created_at = note.note_date or datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     with db_connection() as conn:
         conn.execute(
-            """INSERT INTO notes (id, resident_id, content, acgme_domain, sentiment, priority)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (nid, resident_id, note.content, note.acgme_domain, note.sentiment, note.priority)
+            """INSERT INTO notes (id, resident_id, content, acgme_domain, sentiment, priority, source, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (nid, resident_id, note.content, note.acgme_domain, note.sentiment, note.priority, note.source, created_at)
         )
     return {"id": nid, "message": "Note created"}
 
@@ -416,11 +435,12 @@ def list_resident_followups(resident_id: str, include_resolved: bool = False):
 @app.post("/api/residents/{resident_id}/followups")
 def create_followup(resident_id: str, followup: FollowupCreate):
     fid = str(uuid.uuid4())[:8]
+    created_at = followup.note_date or datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     with db_connection() as conn:
         conn.execute(
-            """INSERT INTO followups (id, resident_id, description, priority)
-               VALUES (?, ?, ?, ?)""",
-            (fid, resident_id, followup.description, followup.priority)
+            """INSERT INTO followups (id, resident_id, description, priority, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (fid, resident_id, followup.description, followup.priority, created_at)
         )
     return {"id": fid, "message": "Follow-up created"}
 
@@ -449,6 +469,21 @@ def delete_followup(followup_id: str):
     return {"message": "Follow-up deleted"}
 
 # ---------------------------------------------------------------------------
+# Ollama proxy endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/ollama/models")
+async def get_ollama_models():
+    """Return available Ollama model names, or an error object if Ollama is unreachable."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{OLLAMA_URL}/api/tags")
+            r.raise_for_status()
+            return [m["name"] for m in r.json().get("models", [])]
+    except Exception:
+        return {"error": "Could not connect to Ollama. Make sure Ollama is running (run 'ollama serve')."}
+
+# ---------------------------------------------------------------------------
 # AI Summary endpoints
 # ---------------------------------------------------------------------------
 
@@ -462,8 +497,13 @@ def list_summaries(resident_id: str):
         return [dict(r) for r in rows]
 
 @app.post("/api/residents/{resident_id}/generate-summary")
-async def generate_summary(resident_id: str):
-    """Generate an AI summary from all notes for this resident."""
+async def generate_summary(
+    resident_id: str,
+    model: Optional[str] = Query(None),
+):
+    """Stream an AI summary as NDJSON tokens, saving to DB on completion."""
+    effective_model = model or OLLAMA_MODEL
+
     with db_connection() as conn:
         resident = conn.execute(
             "SELECT * FROM residents WHERE id = ?", (resident_id,)
@@ -476,90 +516,87 @@ async def generate_summary(resident_id: str):
             (resident_id,)
         ).fetchall()
 
-        followups = conn.execute(
-            "SELECT * FROM followups WHERE resident_id = ? AND resolved = 0",
+        medhub_rows = conn.execute(
+            "SELECT * FROM medhub_evaluations WHERE resident_id = ? ORDER BY evaluation_date",
             (resident_id,)
         ).fetchall()
 
     if not notes:
         raise HTTPException(status_code=400, detail="No notes to summarize")
 
-    # Build the prompt
-    resident_name = f"Dr. {dict(resident)['first_name']} {dict(resident)['last_name']}"
-    pgy = dict(resident)["pgy_year"]
+    notes_text = "\n".join(
+        f"[{n['created_at']}] source={n['source'] or 'unknown'} "
+        f"domain={n['acgme_domain'] or 'General'} content={n['content']}"
+        for n in notes
+    )
+    medhub_text = (
+        "\n".join(
+            f"[{r['evaluation_date']}] rotation={r['rotation_name']} "
+            f"evaluator={r['evaluator_name']} domain={r['competency_domain']} "
+            f"score={r['score']} comments={r['comments']}"
+            for r in medhub_rows
+        ) if medhub_rows else "No MedHub data available yet"
+    )
 
-    notes_text = ""
-    for n in notes:
-        nd = dict(n)
-        notes_text += f"\n- [{nd['created_at']}] ({nd['acgme_domain'] or 'General'}, {nd['sentiment']}, {nd['priority']}): {nd['content']}"
+    prompt = (
+        "You are helping a program director prepare for a Clinical Competency Committee meeting. "
+        "Below is all available information about a resident, organized into two sections. "
+        "Section 1 is manually entered committee notes, each tagged with an ACGME competency domain and source. "
+        "Section 2 is formal evaluation data imported from MedHub. "
+        "Write a concise narrative summary organized by ACGME domain, drawing on both sources where available. "
+        "Highlight clear strengths, flag any concerns or patterns worth discussing, and suggest follow-up items. "
+        "Be specific and reference the source of your observations. "
+        f"[Section 1 - Committee Notes: {notes_text}] "
+        f"[Section 2 - MedHub Evaluations: {medhub_text}]"
+    )
 
-    followup_text = ""
-    if followups:
-        followup_text = "\n\nOpen follow-up items:\n"
-        for f in followups:
-            fd = dict(f)
-            followup_text += f"- [{fd['priority']}] {fd['description']}\n"
-
-    prompt = f"""You are helping a clinical competency committee review the progress of an internal medicine resident. 
-
-Resident: {resident_name} (PGY-{pgy})
-
-Below are all documented feedback notes and observations for this resident. Each note includes a date, ACGME competency domain, sentiment (strength/neutral/concern), and priority level.
-
-Notes:{notes_text}
-{followup_text}
-
-Please provide a structured summary organized as follows:
-
-## Overall Assessment
-A brief 2-3 sentence overview of this resident's trajectory.
-
-## Strengths
-List the key strengths with supporting evidence from the notes.
-
-## Areas for Growth
-List areas where improvement is needed, referencing specific observations.
-
-## Recommended Follow-Up Actions
-Specific, actionable items the program should track going forward.
-
-Keep the tone professional, balanced, and constructive. Be specific — reference actual observations rather than making generic statements."""
-
-    # Call Ollama
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.4,
-                        "num_predict": 2048,
-                    }
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            ai_text = result.get("response", "")
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not connect to Ollama. Make sure Ollama is running (run 'ollama serve' in a terminal)."
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
-
-    # Save draft
     sid = str(uuid.uuid4())[:8]
-    with db_connection() as conn:
-        conn.execute(
-            """INSERT INTO summaries (id, resident_id, ai_draft) VALUES (?, ?, ?)""",
-            (sid, resident_id, ai_text)
-        )
 
-    return {"id": sid, "ai_draft": ai_text}
+    async def stream_generator():
+        accumulated = []
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_URL}/api/generate",
+                    json={
+                        "model": effective_model,
+                        "prompt": prompt,
+                        "stream": True,
+                        "options": {
+                            "temperature": 0.4,
+                            "num_predict": OLLAMA_MAX_TOKENS,
+                        },
+                    },
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        token = chunk.get("response", "")
+                        if token:
+                            accumulated.append(token)
+                            yield json.dumps({"token": token}) + "\n"
+                        if chunk.get("done"):
+                            break
+
+            with db_connection() as conn:
+                conn.execute(
+                    "INSERT INTO summaries (id, resident_id, ai_draft) VALUES (?, ?, ?)",
+                    (sid, resident_id, "".join(accumulated)),
+                )
+            yield json.dumps({"done": True, "id": sid}) + "\n"
+
+        except httpx.ConnectError:
+            yield json.dumps({"error": "Could not connect to Ollama. Make sure Ollama is running."}) + "\n"
+        except Exception as e:
+            yield json.dumps({"error": f"Error generating summary: {str(e)}"}) + "\n"
+
+    return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
 
 @app.put("/api/summaries/{summary_id}/approve")
 def approve_summary(summary_id: str, data: SummaryApproval):

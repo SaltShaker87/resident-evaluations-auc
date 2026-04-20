@@ -8,7 +8,7 @@ import {
   getResident, updateResident, deleteResident, uploadPhoto,
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
-  getSummaries, generateSummary, approveSummary, deleteSummary,
+  getSummaries, generateSummary, approveSummary, deleteSummary, getOllamaModels,
 } from '../api';
 import Avatar from '../components/Avatar';
 
@@ -23,17 +23,33 @@ const DOMAINS = [
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
+  // SQLite stores datetime as 'YYYY-MM-DD HH:MM:SS' (space-separated); normalize to ISO
+  const iso = dateStr.replace(' ', 'T');
+  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ---- Quick Add Note ----
+
+const SOURCE_OPTIONS = [
+  'CCC Meeting',
+  'Direct Observation',
+  'MedHub / Evaluation',
+  'Colleague Report',
+  'Other',
+];
+
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
 
 function QuickAddNote({ residentId, onAdded }) {
   const [content, setContent] = useState('');
   const [domain, setDomain] = useState('');
   const [sentiment, setSentiment] = useState('neutral');
   const [priority, setPriority] = useState('routine');
+  const [source, setSource] = useState('');
+  const [noteDate, setNoteDate] = useState(todayStr);
   const textRef = useRef();
 
   const handleSubmit = async (e) => {
@@ -44,11 +60,15 @@ function QuickAddNote({ residentId, onAdded }) {
       acgme_domain: domain || null,
       sentiment,
       priority,
+      source: source || null,
+      note_date: noteDate,
     });
     setContent('');
     setDomain('');
     setSentiment('neutral');
     setPriority('routine');
+    setSource('');
+    setNoteDate(todayStr());
     textRef.current?.focus();
     onAdded();
   };
@@ -76,6 +96,13 @@ function QuickAddNote({ residentId, onAdded }) {
             </select>
           </div>
           <div className="form-group">
+            <label>Source</label>
+            <select className="form-select" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">— Select —</option>
+              {SOURCE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
             <label>Sentiment</label>
             <select className="form-select" value={sentiment} onChange={(e) => setSentiment(e.target.value)}>
               <option value="strength">Strength</option>
@@ -92,6 +119,17 @@ function QuickAddNote({ residentId, onAdded }) {
             </select>
           </div>
         </div>
+        <div className="form-row" style={{ marginTop: '0.5rem' }}>
+          <div className="form-group" style={{ maxWidth: '200px' }}>
+            <label>Date</label>
+            <input
+              type="date"
+              className="form-input"
+              value={noteDate}
+              onChange={(e) => setNoteDate(e.target.value)}
+            />
+          </div>
+        </div>
         <button type="submit" className="btn btn--primary" disabled={!content.trim()}>
           <Plus size={15} /> Save Note
         </button>
@@ -106,13 +144,15 @@ function FollowupsSection({ residentId, followups, onChanged }) {
   const [adding, setAdding] = useState(false);
   const [desc, setDesc] = useState('');
   const [priority, setPriority] = useState('routine');
+  const [followupDate, setFollowupDate] = useState(todayStr);
 
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!desc.trim()) return;
-    await createFollowup(residentId, { description: desc.trim(), priority });
+    await createFollowup(residentId, { description: desc.trim(), priority, note_date: followupDate });
     setDesc('');
     setPriority('routine');
+    setFollowupDate(todayStr());
     setAdding(false);
     onChanged();
   };
@@ -158,6 +198,13 @@ function FollowupsSection({ residentId, followups, onChanged }) {
               <option value="important">Important</option>
               <option value="urgent">Urgent</option>
             </select>
+            <input
+              type="date"
+              className="form-input"
+              style={{ width: 'auto' }}
+              value={followupDate}
+              onChange={(e) => setFollowupDate(e.target.value)}
+            />
             <button type="submit" className="btn btn--primary btn--sm" disabled={!desc.trim()}>Save</button>
           </div>
         </form>
@@ -174,6 +221,7 @@ function FollowupsSection({ residentId, followups, onChanged }) {
             <div className="followup-item__text">
               {f.description}
               <span className={`tag tag--${f.priority}`} style={{ marginLeft: '0.5rem' }}>{f.priority}</span>
+              {f.created_at && <span className="text-sm text-muted" style={{ marginLeft: '0.5rem' }}>{formatDate(f.created_at)}</span>}
             </div>
             <button className="btn btn--ghost btn--sm" onClick={() => { deleteFollowup(f.id); onChanged(); }}>
               <Trash2 size={14} />
@@ -190,7 +238,10 @@ function FollowupsSection({ residentId, followups, onChanged }) {
                 <div className="followup-checkbox checked" onClick={() => handleToggle(f)}>
                   <Check size={12} color="white" />
                 </div>
-                <div className="followup-item__text resolved">{f.description}</div>
+                <div className="followup-item__text resolved">
+                  {f.description}
+                  {f.created_at && <span className="text-sm text-muted" style={{ marginLeft: '0.5rem' }}>{formatDate(f.created_at)}</span>}
+                </div>
               </div>
             ))}
           </details>
@@ -241,6 +292,7 @@ function NotesTimeline({ notes, onChanged }) {
               <div className="timeline-item__header">
                 <span className="timeline-item__date">{formatDate(n.created_at)}</span>
                 {n.acgme_domain && <span className="tag tag--domain">{n.acgme_domain}</span>}
+                {n.source && <span className="tag tag--source">{n.source}</span>}
                 <span className={`tag tag--${n.sentiment}`}>{n.sentiment}</span>
                 {n.priority !== 'routine' && <span className={`tag tag--${n.priority}`}>{n.priority}</span>}
               </div>
@@ -282,53 +334,137 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
   const [generating, setGenerating] = useState(false);
   const [draft, setDraft] = useState(null);
   const [editText, setEditText] = useState('');
+  const [summaryId, setSummaryId] = useState(null);
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [ollamaError, setOllamaError] = useState('');
+
+  useEffect(() => {
+    getOllamaModels().then((result) => {
+      if (Array.isArray(result) && result.length > 0) {
+        setModels(result);
+        setSelectedModel(result[0]);
+        setOllamaError('');
+      } else if (result?.error) {
+        setOllamaError(result.error);
+      } else {
+        setOllamaError('Ollama is reachable but no models are installed.');
+      }
+    }).catch(() => {
+      setOllamaError('Could not connect to Ollama — make sure it is running.');
+    });
+  }, []);
 
   const handleGenerate = async () => {
     setGenerating(true);
+    setDraft({ id: null });
+    setEditText('');
+    setSummaryId(null);
+
     try {
-      const result = await generateSummary(residentId);
-      setDraft(result);
-      setEditText(result.ai_draft);
+      const response = await generateSummary(residentId, selectedModel || null);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(err.detail || `HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processLine = (line) => {
+        if (!line.trim()) return;
+        let msg;
+        try { msg = JSON.parse(line); } catch (_e) { return; }
+        if (msg.token) {
+          setEditText((prev) => prev + msg.token);
+        } else if (msg.done && msg.id) {
+          setSummaryId(msg.id);
+          setDraft({ id: msg.id });
+        } else if (msg.error) {
+          showToast(msg.error);
+          setDraft(null);
+          setEditText('');
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        lines.forEach(processLine);
+      }
+      // flush any remaining buffered line (e.g. stream ended without trailing newline)
+      if (buffer.trim()) processLine(buffer);
     } catch (err) {
       showToast(err.message || 'Failed to generate summary');
+      setDraft(null);
+      setEditText('');
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const handleApprove = async () => {
-    await approveSummary(draft.id, editText);
+    const idToApprove = summaryId || draft?.id;
+    if (!idToApprove) { showToast('No summary ID — cannot approve'); return; }
+    await approveSummary(idToApprove, editText);
     setDraft(null);
     setEditText('');
+    setSummaryId(null);
     showToast('Summary approved and saved');
     onChanged();
   };
 
   const handleDiscard = async () => {
-    if (draft) {
-      await deleteSummary(draft.id);
-      setDraft(null);
-      setEditText('');
-    }
+    const idToDelete = summaryId || draft?.id;
+    if (idToDelete) await deleteSummary(idToDelete);
+    setDraft(null);
+    setEditText('');
+    setSummaryId(null);
   };
 
   return (
     <div className="section">
       <div className="section__header">
         <div className="section__title">AI Summaries</div>
-        <button
-          className="btn btn--primary btn--sm"
-          onClick={handleGenerate}
-          disabled={generating || noteCount === 0}
-        >
-          {generating ? (
-            <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {ollamaError ? (
+            <span className="text-sm text-muted">Ollama unavailable</span>
           ) : (
-            <><Sparkles size={14} /> Generate Summary</>
+            <select
+              className="form-select"
+              style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              disabled={generating}
+            >
+              {models.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
           )}
-        </button>
+          <button
+            className="btn btn--primary btn--sm"
+            onClick={handleGenerate}
+            disabled={generating || noteCount === 0 || !!ollamaError}
+          >
+            {generating ? (
+              <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</>
+            ) : (
+              <><Sparkles size={14} /> Generate Summary</>
+            )}
+          </button>
+        </div>
       </div>
 
-      {noteCount === 0 && (
+      {ollamaError && (
+        <div className="text-sm" style={{ padding: '0.5rem 0', color: 'var(--red-600, #dc2626)' }}>
+          {ollamaError}
+        </div>
+      )}
+
+      {noteCount === 0 && !ollamaError && (
         <div className="text-sm text-muted" style={{ padding: '0.5rem 0' }}>
           Add some notes first before generating a summary.
         </div>
@@ -342,12 +478,14 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
           />
-          <div className="flex gap-sm mt-md">
-            <button className="btn btn--primary" onClick={handleApprove}>
-              <Check size={15} /> Approve & Save
-            </button>
-            <button className="btn btn--secondary" onClick={handleDiscard}>Discard</button>
-          </div>
+          {!generating && (
+            <div className="flex gap-sm mt-md">
+              <button className="btn btn--primary" onClick={handleApprove} disabled={!summaryId}>
+                <Check size={15} /> Approve & Save
+              </button>
+              <button className="btn btn--secondary" onClick={handleDiscard}>Discard</button>
+            </div>
+          )}
         </div>
       )}
 
