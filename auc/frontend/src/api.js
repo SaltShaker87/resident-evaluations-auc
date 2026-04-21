@@ -107,3 +107,27 @@ export const deleteSummary = (id) =>
 
 // Ollama
 export const getOllamaModels = () => request('/ollama/models');
+
+// MedHub Import
+export const parseMedhubCsv = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/medhub/parse-csv`, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Parse failed' }));
+    throw new Error(err.detail || `Request failed: ${res.status}`);
+  }
+  return res.json();
+};
+
+export const importMedhubCsv = (rows, mapping, manualMatches = {}) =>
+  request('/medhub/import', {
+    method: 'POST',
+    body: JSON.stringify({ rows, mapping, manual_matches: manualMatches }),
+  });
+
+export const syncMedhubApi = () => request('/medhub/sync', { method: 'POST' });
+
+export const getMedhubStatus = () => request('/medhub/status');
+
+export const getResidentsForMatching = () => request('/residents/list-for-matching');

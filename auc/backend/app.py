@@ -4,6 +4,8 @@ Backend API server for residency feedback management.
 """
 
 import os
+import csv
+import io
 import json
 import sqlite3
 import shutil
@@ -24,7 +26,8 @@ import httpx
 # Configuration
 # ---------------------------------------------------------------------------
 
-from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS
+from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
+import medhub_api
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -117,6 +120,15 @@ def init_db():
                 comments TEXT,
                 FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE CASCADE
             );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_medhub_no_dupes
+            ON medhub_evaluations(resident_id, evaluator_name, evaluation_date, competency_domain);
+            CREATE TABLE IF NOT EXISTS medhub_sync_log (
+                id TEXT PRIMARY KEY,
+                sync_date TEXT DEFAULT (datetime('now')),
+                sync_type TEXT NOT NULL,
+                imported INTEGER DEFAULT 0,
+                skipped INTEGER DEFAULT 0
+            );
         """)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
@@ -177,6 +189,11 @@ class FollowupCreate(BaseModel):
 
 class SummaryApproval(BaseModel):
     approved_text: str
+
+class MedhubImportRequest(BaseModel):
+    rows: List[dict]
+    mapping: dict
+    manual_matches: dict = {}
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -545,7 +562,7 @@ async def generate_summary(
         "Section 2 is formal evaluation data imported from MedHub. "
         "Write a concise narrative summary organized by ACGME domain, drawing on both sources where available. "
         "Highlight clear strengths, flag any concerns or patterns worth discussing, and suggest follow-up items. "
-        "Be specific and reference the source of your observations. "
+        "Be specific and reference the source of your observations. If there is no information for a particular domain, say so explicitly. "
         f"[Section 1 - Committee Notes: {notes_text}] "
         f"[Section 2 - MedHub Evaluations: {medhub_text}]"
     )
@@ -614,6 +631,165 @@ def delete_summary(summary_id: str):
     with db_connection() as conn:
         conn.execute("DELETE FROM summaries WHERE id = ?", (summary_id,))
     return {"message": "Summary deleted"}
+
+# ---------------------------------------------------------------------------
+# MedHub import endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/medhub/parse-csv")
+async def parse_medhub_csv(file: UploadFile = File(...)):
+    """Read an uploaded CSV and return headers + first 5 rows for preview."""
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+    contents = await file.read()
+    try:
+        text = contents.decode("utf-8-sig")  # handle BOM from Excel exports
+    except UnicodeDecodeError:
+        text = contents.decode("latin-1")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = reader.fieldnames or []
+    rows = []
+    for i, row in enumerate(reader):
+        rows.append(dict(row))
+        if i >= 4:
+            break
+    return {"headers": list(headers), "preview": rows}
+
+
+def _name_lookup(conn: sqlite3.Connection) -> dict:
+    """Build name→id map for all active residents (forward and reversed)."""
+    result = {}
+    for r in conn.execute("SELECT id, first_name, last_name FROM residents WHERE active=1").fetchall():
+        full = f"{r['first_name']} {r['last_name']}".lower().strip()
+        rev = f"{r['last_name']}, {r['first_name']}".lower().strip()
+        result[full] = r["id"]
+        result[rev] = r["id"]
+    return result
+
+
+@app.post("/api/medhub/import")
+def import_medhub_csv(data: MedhubImportRequest):
+    """
+    Import CSV rows into medhub_evaluations using the provided column mapping.
+    Returns counts of imported, skipped duplicates, and unmatched resident names.
+    """
+    mapping = data.mapping
+    resident_col = mapping.get("resident_name")
+    evaluator_col = mapping.get("evaluator")
+    rotation_col = mapping.get("rotation")
+    domain_col = mapping.get("domain")
+    score_col = mapping.get("score")
+    comments_col = mapping.get("comments")
+    date_col = mapping.get("evaluation_date")
+
+    with db_connection() as conn:
+        name_map = _name_lookup(conn)
+        # Merge in any manual overrides
+        for csv_name, res_id in data.manual_matches.items():
+            name_map[csv_name.lower().strip()] = res_id
+
+        imported = skipped_duplicates = 0
+        unmatched: list = []
+
+        for idx, row in enumerate(data.rows):
+            csv_name = str(row.get(resident_col, "")).strip() if resident_col else ""
+            resident_id = name_map.get(csv_name.lower()) if csv_name else None
+            if not resident_id:
+                unmatched.append({"csv_name": csv_name, "row_index": idx})
+                continue
+
+            evaluator = str(row.get(evaluator_col, "")).strip() if evaluator_col else None
+            rotation = str(row.get(rotation_col, "")).strip() if rotation_col else None
+            domain = str(row.get(domain_col, "")).strip() if domain_col else None
+            score_raw = row.get(score_col, "") if score_col else ""
+            try:
+                score = float(score_raw) if score_raw else None
+            except (ValueError, TypeError):
+                score = None
+            comments = str(row.get(comments_col, "")).strip() if comments_col else None
+            eval_date = str(row.get(date_col, "")).strip() if date_col else None
+
+            conn.execute(
+                """INSERT OR IGNORE INTO medhub_evaluations
+                   (id, resident_id, rotation_name, evaluator_name,
+                    evaluation_date, competency_domain, score, comments)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4())[:8], resident_id, rotation, evaluator,
+                 eval_date, domain, score, comments),
+            )
+            changed = conn.execute("SELECT changes()").fetchone()[0]
+            if changed:
+                imported += 1
+            else:
+                skipped_duplicates += 1
+
+        # Log this import
+        if imported > 0 or skipped_duplicates > 0:
+            conn.execute(
+                "INSERT INTO medhub_sync_log (id, sync_type, imported, skipped) VALUES (?, 'csv', ?, ?)",
+                (str(uuid.uuid4())[:8], imported, skipped_duplicates),
+            )
+
+    return {
+        "imported": imported,
+        "skipped_duplicates": skipped_duplicates,
+        "unmatched": unmatched,
+    }
+
+
+@app.post("/api/medhub/sync")
+def sync_medhub_api():
+    """Trigger a live sync from the MedHub API (requires credentials in config.py)."""
+    if not medhub_api.is_configured():
+        return {
+            "configured": False,
+            "message": "MedHub API not configured — see auc/backend/config.py to add credentials.",
+        }
+    conn = get_db()
+    try:
+        result = medhub_api.sync_to_db(conn)
+        conn.execute(
+            "INSERT INTO medhub_sync_log (id, sync_type, imported, skipped) VALUES (?, 'api', ?, ?)",
+            (str(uuid.uuid4())[:8], result["imported"], result["skipped_duplicates"]),
+        )
+        conn.commit()
+        return {"configured": True, **result}
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"MedHub API error: {exc}")
+    finally:
+        conn.close()
+
+
+@app.get("/api/medhub/status")
+def medhub_status():
+    """Return import/sync statistics for the MedHub Import page."""
+    with db_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM medhub_evaluations").fetchone()[0]
+        last_csv_row = conn.execute(
+            "SELECT sync_date FROM medhub_sync_log WHERE sync_type='csv' ORDER BY sync_date DESC LIMIT 1"
+        ).fetchone()
+        last_api_row = conn.execute(
+            "SELECT sync_date FROM medhub_sync_log WHERE sync_type='api' ORDER BY sync_date DESC LIMIT 1"
+        ).fetchone()
+    return {
+        "total_evaluations": total,
+        "last_csv_import": last_csv_row["sync_date"] if last_csv_row else None,
+        "last_api_sync": last_api_row["sync_date"] if last_api_row else None,
+        "api_configured": medhub_api.is_configured(),
+    }
+
+
+@app.get("/api/residents/list-for-matching")
+def residents_for_matching():
+    """Lightweight resident list for the unmatched-name resolution dropdowns."""
+    with db_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, first_name, last_name, pgy_year FROM residents WHERE active=1 ORDER BY last_name, first_name"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
 
 # ---------------------------------------------------------------------------
 # Serve frontend (production mode)

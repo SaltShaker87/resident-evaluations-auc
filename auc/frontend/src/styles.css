@@ -342,6 +342,11 @@ body {
   color: var(--blue-700);
 }
 
+.tag--source {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
 .tag--pgy {
   background: var(--slate-100);
   color: var(--slate-600);
@@ -962,3 +967,204 @@ body {
 .mb-md { margin-bottom: 1rem; }
 .text-sm { font-size: 0.8125rem; }
 .text-muted { color: var(--slate-500); }
+
+/* ============================================================
+   MedHub Import page
+   ============================================================ */
+
+/* ---- Drag-and-drop upload zone ---- */
+
+.upload-zone {
+  border: 2px dashed var(--slate-300);
+  border-radius: 10px;
+  padding: 2.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--slate-50);
+  user-select: none;
+}
+
+.upload-zone:hover {
+  border-color: var(--blue-400);
+  background: var(--blue-50);
+}
+
+.upload-zone--active {
+  border-color: var(--blue-500);
+  background: var(--blue-50);
+  box-shadow: 0 0 0 3px var(--blue-100);
+}
+
+/* ---- Column mapping grid ---- */
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+/* ---- Scrollable preview table ---- */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--slate-200);
+  border-radius: 6px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.data-table th {
+  background: var(--slate-100);
+  color: var(--slate-600);
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--slate-200);
+}
+
+.data-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--slate-100);
+  color: var(--slate-700);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- Unmatched table ---- */
+
+.unmatched-table {
+  white-space: normal;
+}
+
+.unmatched-table td {
+  vertical-align: middle;
+  max-width: none;
+}
+
+/* ---- Import summary card ---- */
+
+.import-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background: var(--green-50);
+  border: 1px solid var(--green-100);
+  border-radius: 10px;
+}
+
+.import-summary__icon {
+  color: var(--green-600);
+  margin-bottom: 0.5rem;
+}
+
+.import-summary__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--slate-800);
+  margin-bottom: 1rem;
+}
+
+.import-summary__counts {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.import-summary__count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.import-summary__number {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--slate-700);
+  line-height: 1;
+}
+
+.import-summary__count--success .import-summary__number { color: var(--green-600); }
+.import-summary__count--warn .import-summary__number { color: var(--amber-600); }
+
+.import-summary__label {
+  font-size: 0.8rem;
+  color: var(--slate-500);
+}
+
+/* ---- Alert banners ---- */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.alert--warning {
+  background: var(--amber-50);
+  border: 1px solid var(--amber-100);
+  color: var(--amber-700);
+}
+
+.alert--danger {
+  background: var(--red-50);
+  border: 1px solid var(--red-100);
+  color: var(--red-700);
+}
+
+/* ---- API unconfigured notice ---- */
+
+.api-unconfigured {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem 1.25rem;
+  background: var(--slate-100);
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+}
+
+.api-unconfigured code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  background: var(--slate-200);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+/* ---- Small spinner variant ---- */
+
+.spinner--sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+/* ---- Page-level content wrapper ---- */
+
+.page-content {
+  padding: 1.5rem 2rem;
+  max-width: 900px;
+}
+

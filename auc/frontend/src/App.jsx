@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
-import { Users, ClipboardList } from 'lucide-react';
+import { Users, ClipboardList, Upload } from 'lucide-react';
 import ResidentList from './pages/ResidentList';
 import ResidentDetail from './pages/ResidentDetail';
 import FollowupDashboard from './pages/FollowupDashboard';
+import MedhubImport from './pages/MedhubImport';
 
 function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
@@ -44,6 +45,9 @@ export default function App() {
           <NavLink to="/followups" className={({ isActive }) => isActive ? 'active' : ''}>
             <ClipboardList size={16} /> Follow-Ups
           </NavLink>
+          <NavLink to="/medhub" className={({ isActive }) => isActive ? 'active' : ''}>
+            <Upload size={16} /> MedHub Import
+          </NavLink>
         </nav>
       </header>
       <main className="app-main">
@@ -51,6 +55,7 @@ export default function App() {
           <Route path="/" element={<ResidentList showToast={showToast} />} />
           <Route path="/residents/:id" element={<ResidentDetail showToast={showToast} />} />
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
+          <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />
