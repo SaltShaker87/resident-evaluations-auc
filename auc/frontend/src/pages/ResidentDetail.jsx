@@ -343,7 +343,8 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
     getOllamaModels().then((result) => {
       if (Array.isArray(result) && result.length > 0) {
         setModels(result);
-        setSelectedModel(result[0]);
+        const saved = localStorage.getItem('defaultOllamaModel');
+        setSelectedModel(saved && result.includes(saved) ? saved : result[0]);
         setOllamaError('');
       } else if (result?.error) {
         setOllamaError(result.error);
@@ -516,6 +517,8 @@ function EditResidentModal({ resident, onClose, onSaved }) {
   const [medicalSchool, setMedicalSchool] = useState(resident.medical_school ?? '');
   const [interests, setInterests] = useState(resident.interests ?? '');
   const [track, setTrack] = useState(resident.track ?? 'none');
+  const [isPrelim, setIsPrelim] = useState(!!resident.is_prelim);
+  const [prelimSpecialty, setPrelimSpecialty] = useState(resident.prelim_specialty ?? '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -526,6 +529,8 @@ function EditResidentModal({ resident, onClose, onSaved }) {
       medical_school: medicalSchool.trim() || null,
       interests: interests.trim() || null,
       track,
+      is_prelim: isPrelim,
+      prelim_specialty: isPrelim ? (prelimSpecialty.trim() || null) : null,
     });
     onSaved();
   };
@@ -570,6 +575,18 @@ function EditResidentModal({ resident, onClose, onSaved }) {
             <label>Interests</label>
             <input className="form-input" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. cardiology, global health" />
           </div>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isPrelim} onChange={(e) => setIsPrelim(e.target.checked)} />
+              Prelim Resident
+            </label>
+          </div>
+          {isPrelim && (
+            <div className="form-group">
+              <label>Prelim Specialty</label>
+              <input className="form-input" value={prelimSpecialty} onChange={(e) => setPrelimSpecialty(e.target.value)} placeholder="e.g. Dermatology, Ophthalmology" />
+            </div>
+          )}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn--primary">Save Changes</button>
@@ -677,6 +694,9 @@ export default function ResidentDetail({ showToast }) {
           <h1>Dr. {resident.first_name} {resident.last_name}</h1>
           <div className="detail-header__meta">
             <span className={`tag tag--pgy tag--pgy-${resident.pgy_year}`}>PGY-{resident.pgy_year}</span>
+            {resident.is_prelim ? (
+              <span className="tag tag--prelim">Prelim{resident.prelim_specialty ? ` · ${resident.prelim_specialty}` : ''}</span>
+            ) : null}
             <span className="text-sm text-muted">{resident.total_notes} note{resident.total_notes !== 1 ? 's' : ''}</span>
             {resident.open_followups > 0 && (
               <span className="badge badge--alert">{resident.open_followups} open follow-up{resident.open_followups !== 1 ? 's' : ''}</span>

@@ -131,3 +131,36 @@ export const syncMedhubApi = () => request('/medhub/sync', { method: 'POST' });
 export const getMedhubStatus = () => request('/medhub/status');
 
 export const getResidentsForMatching = () => request('/residents/list-for-matching');
+
+// Resident advancement (snapshot + undo)
+export const executeAdvancement = (plan) =>
+  request('/advancement/execute', { method: 'POST', body: JSON.stringify(plan) });
+
+export const getActiveSnapshot = () => request('/advancement/active');
+
+export const restoreSnapshot = (snapshotId) =>
+  request(`/advancement/${snapshotId}/restore`, { method: 'POST' });
+
+export const dismissSnapshot = (snapshotId) =>
+  request(`/advancement/${snapshotId}/dismiss`, { method: 'POST' });
+
+// Data management
+export const downloadBackup = async () => {
+  const res = await fetch(`${BASE}/backup`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Backup failed' }));
+    throw new Error(err.detail || `Request failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : 'auc-backup.db';
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};

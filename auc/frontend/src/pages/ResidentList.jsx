@@ -5,6 +5,7 @@ import { getResidents, createResident, bulkImportResidents } from '../api';
 import Avatar from '../components/Avatar';
 
 const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', fellowship: 'Fellowship', other: 'Other' };
+const STATUS_LABELS = { graduated: 'Graduated', departed: 'Departed', chief: 'Chief Resident' };
 
 function AddResidentModal({ onClose, onCreated }) {
   const [firstName, setFirstName] = useState('');
@@ -13,6 +14,8 @@ function AddResidentModal({ onClose, onCreated }) {
   const [medicalSchool, setMedicalSchool] = useState('');
   const [interests, setInterests] = useState('');
   const [track, setTrack] = useState('none');
+  const [isPrelim, setIsPrelim] = useState(false);
+  const [prelimSpecialty, setPrelimSpecialty] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,6 +27,8 @@ function AddResidentModal({ onClose, onCreated }) {
       medical_school: medicalSchool.trim() || null,
       interests: interests.trim() || null,
       track,
+      is_prelim: isPrelim,
+      prelim_specialty: isPrelim ? (prelimSpecialty.trim() || null) : null,
     });
     onCreated();
   };
@@ -68,6 +73,18 @@ function AddResidentModal({ onClose, onCreated }) {
             <label>Interests</label>
             <input className="form-input" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. cardiology, global health" />
           </div>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isPrelim} onChange={(e) => setIsPrelim(e.target.checked)} />
+              Prelim Resident
+            </label>
+          </div>
+          {isPrelim && (
+            <div className="form-group">
+              <label>Prelim Specialty</label>
+              <input className="form-input" value={prelimSpecialty} onChange={(e) => setPrelimSpecialty(e.target.value)} placeholder="e.g. Dermatology, Ophthalmology" />
+            </div>
+          )}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn--primary">Add Resident</button>
@@ -150,6 +167,7 @@ export default function ResidentList({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [pgyFilter, setPgyFilter] = useState(null);
+  const [showInactive, setShowInactive] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const navigate = useNavigate();
@@ -157,7 +175,7 @@ export default function ResidentList({ showToast }) {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await getResidents();
+      const data = await getResidents(!showInactive);
       setResidents(data);
     } catch (err) {
       showToast('Failed to load residents');
@@ -165,7 +183,9 @@ export default function ResidentList({ showToast }) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [showInactive]);
+
+  const activeCount = residents.filter((r) => r.active).length;
 
   const filtered = residents.filter((r) => {
     const matchesSearch = `${r.first_name} ${r.last_name}`.toLowerCase().includes(search.toLowerCase());
@@ -185,7 +205,10 @@ export default function ResidentList({ showToast }) {
         <div className="flex items-center justify-between">
           <div>
             <h1>Residents</h1>
-            <p>{residents.length} active resident{residents.length !== 1 ? 's' : ''}</p>
+            <p>
+              {activeCount} active resident{activeCount !== 1 ? 's' : ''}
+              {showInactive ? ` · ${residents.length - activeCount} inactive` : ''}
+            </p>
           </div>
           <div className="flex gap-sm">
             <button className="btn btn--secondary" onClick={() => setShowBulk(true)}>
@@ -224,6 +247,13 @@ export default function ResidentList({ showToast }) {
             PGY-{y}
           </button>
         ))}
+        <button
+          className={`filter-pill ${showInactive ? 'active' : ''}`}
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setShowInactive((v) => !v)}
+        >
+          {showInactive ? 'Hide inactive' : 'Show inactive'}
+        </button>
       </div>
 
       {filtered.length === 0 ? (
@@ -237,7 +267,7 @@ export default function ResidentList({ showToast }) {
           {filtered.map((r) => (
             <div
               key={r.id}
-              className="card card--interactive resident-card"
+              className={`card card--interactive resident-card${r.active ? '' : ' resident-card--inactive'}`}
               onClick={() => navigate(`/residents/${r.id}`)}
             >
               <Avatar
@@ -250,6 +280,14 @@ export default function ResidentList({ showToast }) {
                 <h3>Dr. {r.first_name} {r.last_name}</h3>
                 <div className="resident-card__meta">
                   <span className={`tag tag--pgy tag--pgy-${r.pgy_year}`}>PGY-{r.pgy_year}</span>
+                  {r.status && r.status !== 'active' && (
+                    <span className={`tag tag--status tag--status-${r.status}`}>
+                      {STATUS_LABELS[r.status] ?? r.status}
+                    </span>
+                  )}
+                  {r.is_prelim ? (
+                    <span className="tag tag--prelim">Prelim{r.prelim_specialty ? ` · ${r.prelim_specialty}` : ''}</span>
+                  ) : null}
                   {r.track && r.track !== 'none' && (
                     <span className="tag tag--track">{TRACK_LABELS[r.track] ?? r.track}</span>
                   )}

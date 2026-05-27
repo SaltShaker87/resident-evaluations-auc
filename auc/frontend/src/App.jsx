@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
-import { Users, ClipboardList, Upload } from 'lucide-react';
+import { Users, ClipboardList, Upload, Settings as SettingsIcon } from 'lucide-react';
 import ResidentList from './pages/ResidentList';
 import ResidentDetail from './pages/ResidentDetail';
 import FollowupDashboard from './pages/FollowupDashboard';
 import MedhubImport from './pages/MedhubImport';
+import SettingsPage from './pages/Settings';
 
 function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
@@ -19,6 +20,18 @@ function ToastContainer({ toasts }) {
 
 export default function App() {
   const [toasts, setToasts] = useState([]);
+  const [theme, setThemeState] = useState(
+    () => localStorage.getItem('theme') || 'dark'
+  );
+
+  const setTheme = useCallback((newTheme) => {
+    setThemeState(newTheme);
+    localStorage.setItem('theme', newTheme);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   const showToast = useCallback((message) => {
     const id = Date.now();
@@ -48,6 +61,9 @@ export default function App() {
           <NavLink to="/medhub" className={({ isActive }) => isActive ? 'active' : ''}>
             <Upload size={16} /> MedHub Import
           </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>
+            <SettingsIcon size={16} /> Settings
+          </NavLink>
         </nav>
       </header>
       <main className="app-main">
@@ -56,6 +72,7 @@ export default function App() {
           <Route path="/residents/:id" element={<ResidentDetail showToast={showToast} />} />
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
+          <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} />} />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />

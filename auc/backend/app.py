@@ -129,17 +129,35 @@ def init_db():
                 imported INTEGER DEFAULT 0,
                 skipped INTEGER DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS advancement_snapshots (
+                id TEXT PRIMARY KEY,
+                snapshot_data TEXT NOT NULL,
+                summary TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                is_active INTEGER DEFAULT 1
+            );
         """)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
             "ALTER TABLE residents ADD COLUMN interests TEXT",
             "ALTER TABLE residents ADD COLUMN track TEXT DEFAULT 'none'",
             "ALTER TABLE notes ADD COLUMN source TEXT",
+            "ALTER TABLE residents ADD COLUMN is_prelim INTEGER DEFAULT 0",
+            "ALTER TABLE residents ADD COLUMN prelim_specialty TEXT",
         ]:
             try:
                 conn.execute(col_sql)
             except Exception:
                 pass
+
+        # status: active | graduated | departed | chief. Backfill once on add.
+        try:
+            conn.execute("ALTER TABLE residents ADD COLUMN status TEXT DEFAULT 'active'")
+            conn.execute("UPDATE residents SET status = 'active' WHERE active = 1")
+            conn.execute("UPDATE residents SET status = 'departed' WHERE active = 0")
+        except Exception:
+            pass
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -153,6 +171,8 @@ class ResidentCreate(BaseModel):
     medical_school: Optional[str] = None
     interests: Optional[str] = None
     track: Optional[str] = None
+    is_prelim: Optional[bool] = False
+    prelim_specialty: Optional[str] = None
 
 class ResidentUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -163,6 +183,8 @@ class ResidentUpdate(BaseModel):
     medical_school: Optional[str] = None
     interests: Optional[str] = None
     track: Optional[str] = None
+    is_prelim: Optional[bool] = None
+    prelim_specialty: Optional[str] = None
 
 class BulkResidentImport(BaseModel):
     residents: List[ResidentCreate]
@@ -194,6 +216,14 @@ class MedhubImportRequest(BaseModel):
     rows: List[dict]
     mapping: dict
     manual_matches: dict = {}
+
+class AdvancementExecute(BaseModel):
+    graduate: List[str] = []
+    chief: List[str] = []
+    advance_to_pgy3: List[str] = []
+    advance_to_pgy2: List[str] = []
+    depart: List[str] = []
+    summary: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -253,10 +283,11 @@ def create_resident(resident: ResidentCreate):
     rid = str(uuid.uuid4())[:8]
     with db_connection() as conn:
         conn.execute(
-            """INSERT INTO residents (id, first_name, last_name, pgy_year, start_date, medical_school, interests, track)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO residents (id, first_name, last_name, pgy_year, start_date, medical_school, interests, track, is_prelim, prelim_specialty)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (rid, resident.first_name, resident.last_name, resident.pgy_year, resident.start_date,
-             resident.medical_school, resident.interests, resident.track or 'none')
+             resident.medical_school, resident.interests, resident.track or 'none',
+             1 if resident.is_prelim else 0, resident.prelim_specialty)
         )
     return {"id": rid, "message": "Resident created"}
 
@@ -297,7 +328,7 @@ def update_resident(resident_id: str, updates: ResidentUpdate):
     fields = []
     values = []
     for field, val in updates.dict(exclude_unset=True).items():
-        if field == "active":
+        if field in ("active", "is_prelim"):
             val = 1 if val else 0
         fields.append(f"{field} = ?")
         values.append(val)
@@ -348,6 +379,25 @@ def get_photo(filename: str):
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Photo not found")
     return FileResponse(filepath)
+
+# ---------------------------------------------------------------------------
+# Data management
+# ---------------------------------------------------------------------------
+
+@app.get("/api/backup")
+def download_backup():
+    """Return the SQLite database file as a dated, downloadable backup."""
+    if not DB_PATH.exists():
+        raise HTTPException(status_code=404, detail="Database file not found")
+    # Flush the WAL into the main db file so the backup is current.
+    with db_connection() as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    filename = f"auc-backup-{date.today().isoformat()}.db"
+    return FileResponse(
+        DB_PATH,
+        media_type="application/octet-stream",
+        filename=filename,
+    )
 
 # ---------------------------------------------------------------------------
 # Notes endpoints
@@ -789,6 +839,108 @@ def residents_for_matching():
             "SELECT id, first_name, last_name, pgy_year FROM residents WHERE active=1 ORDER BY last_name, first_name"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Resident advancement (snapshot + undo)
+# ---------------------------------------------------------------------------
+
+def _create_snapshot(conn: sqlite3.Connection, summary: Optional[str] = None) -> str:
+    """Serialize all residents to JSON and store as the new active snapshot."""
+    rows = conn.execute("SELECT * FROM residents").fetchall()
+    data = json.dumps([dict(r) for r in rows])
+    sid = str(uuid.uuid4())[:8]
+    conn.execute("UPDATE advancement_snapshots SET is_active = 0 WHERE is_active = 1")
+    conn.execute(
+        "INSERT INTO advancement_snapshots (id, snapshot_data, summary) VALUES (?, ?, ?)",
+        (sid, data, summary),
+    )
+    return sid
+
+
+@app.post("/api/advancement/snapshot")
+def create_snapshot():
+    """Capture a snapshot of all current resident data."""
+    with db_connection() as conn:
+        sid = _create_snapshot(conn)
+    return {"snapshot_id": sid, "message": "Snapshot created"}
+
+
+@app.post("/api/advancement/execute")
+def execute_advancement(plan: AdvancementExecute):
+    """Snapshot all residents, then apply the advancement plan in one transaction."""
+    with db_connection() as conn:
+        snapshot_id = _create_snapshot(conn, plan.summary)
+
+        for rid in plan.chief:
+            conn.execute(
+                "UPDATE residents SET status = 'chief', active = 0, updated_at = datetime('now') WHERE id = ?",
+                (rid,),
+            )
+        for rid in plan.graduate:
+            conn.execute(
+                "UPDATE residents SET status = 'graduated', active = 0, updated_at = datetime('now') WHERE id = ?",
+                (rid,),
+            )
+        for rid in plan.depart:
+            conn.execute(
+                "UPDATE residents SET status = 'departed', active = 0, updated_at = datetime('now') WHERE id = ?",
+                (rid,),
+            )
+        for rid in plan.advance_to_pgy3:
+            conn.execute(
+                "UPDATE residents SET pgy_year = 3, updated_at = datetime('now') WHERE id = ?",
+                (rid,),
+            )
+        for rid in plan.advance_to_pgy2:
+            conn.execute(
+                "UPDATE residents SET pgy_year = 2, updated_at = datetime('now') WHERE id = ?",
+                (rid,),
+            )
+
+    return {"snapshot_id": snapshot_id, "message": "Advancement complete"}
+
+
+@app.get("/api/advancement/active")
+def get_active_snapshot():
+    """Return the currently active (un-dismissed) snapshot, or null if none."""
+    with db_connection() as conn:
+        row = conn.execute(
+            "SELECT id, summary, created_at FROM advancement_snapshots "
+            "WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+
+@app.post("/api/advancement/{snapshot_id}/restore")
+def restore_snapshot(snapshot_id: str):
+    """Restore all resident data from a snapshot, then deactivate it."""
+    with db_connection() as conn:
+        row = conn.execute(
+            "SELECT snapshot_data FROM advancement_snapshots WHERE id = ?", (snapshot_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Snapshot not found")
+        residents = json.loads(row["snapshot_data"])
+        for r in residents:
+            conn.execute(
+                """UPDATE residents
+                   SET pgy_year = ?, active = ?, status = ?, is_prelim = ?, prelim_specialty = ?,
+                       updated_at = datetime('now')
+                   WHERE id = ?""",
+                (r.get("pgy_year"), r.get("active"), r.get("status", "active"),
+                 r.get("is_prelim", 0), r.get("prelim_specialty"), r["id"]),
+            )
+        conn.execute("UPDATE advancement_snapshots SET is_active = 0 WHERE id = ?", (snapshot_id,))
+    return {"message": "Advancement undone"}
+
+
+@app.post("/api/advancement/{snapshot_id}/dismiss")
+def dismiss_snapshot(snapshot_id: str):
+    """Deactivate a snapshot so it no longer offers an undo."""
+    with db_connection() as conn:
+        conn.execute("UPDATE advancement_snapshots SET is_active = 0 WHERE id = ?", (snapshot_id,))
+    return {"message": "Snapshot dismissed"}
 
 
 # ---------------------------------------------------------------------------
