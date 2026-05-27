@@ -9,6 +9,7 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
 - **AI-generated summaries** — press a button to generate a draft summary of a resident's strengths, growth areas, and recommended actions using your local Ollama model
 - **Edit and approve** — review AI drafts, edit them, and save the final version
+- **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
 
 ## Requirements
 
@@ -64,6 +65,8 @@ All your data lives in one folder: `auc/data/`
 - `photos/` — uploaded resident photos
 
 To back up, just copy the `data` folder somewhere safe.
+
+You can also download a snapshot of the database from inside the app: go to **Settings → Data Management** and click **Download Database Backup**. This saves a dated copy (e.g. `auc-backup-2026-05-27.db`) to your computer. Note that this covers the database only, not uploaded photos — copy the `data` folder if you need those too.
 
 ## File Structure
 
