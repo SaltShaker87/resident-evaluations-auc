@@ -1,0 +1,358 @@
+{
+  "name": "ACGME Internal Medicine Milestones 2.0 Ontology",
+  "source": "ACGME Internal Medicine Milestones (Nov 2020) and Supplemental Guide",
+  "version": "2.0",
+  "note": "Keyword lists are a DRAFT for faculty review. Structure and sub-competency names are taken verbatim from acgme_im_milestones.md; keywords are drafted from descriptors and examples in acgme_im_supplemental_guide.md.",
+  "domains": {
+    "PC": "Patient Care",
+    "MK": "Medical Knowledge",
+    "SBP": "Systems-Based Practice",
+    "PBLI": "Practice-Based Learning and Improvement",
+    "PROF": "Professionalism",
+    "ICS": "Interpersonal and Communication Skills"
+  },
+  "subcompetencies": [
+    {
+      "id": "PC1",
+      "name": "Patient Care 1: History",
+      "domain": "PC",
+      "keywords": [
+        "history taking",
+        "patient interview",
+        "chief complaint",
+        "hypothesis-driven history",
+        "medication reconciliation",
+        "secondary sources",
+        "psychosocial determinants",
+        "pertinent positives and negatives",
+        "chart review"
+      ],
+      "related": ["PC2", "PC3", "ICS1"]
+    },
+    {
+      "id": "PC2",
+      "name": "Patient Care 2: Physical Examination",
+      "domain": "PC",
+      "keywords": [
+        "physical exam",
+        "bedside examination",
+        "abnormal findings",
+        "murmur",
+        "hypothesis-driven exam",
+        "advanced maneuvers",
+        "patient comfort and safety",
+        "exam technique"
+      ],
+      "related": ["PC1", "PC3"]
+    },
+    {
+      "id": "PC3",
+      "name": "Patient Care 3: Clinical Reasoning",
+      "domain": "PC",
+      "keywords": [
+        "clinical reasoning",
+        "differential diagnosis",
+        "prioritized differential",
+        "clinical impression",
+        "cognitive bias",
+        "anchoring",
+        "premature closure",
+        "diagnostic error",
+        "re-appraises reasoning"
+      ],
+      "related": ["PC1", "PC2", "PC4", "PC5"]
+    },
+    {
+      "id": "PC4",
+      "name": "Patient Care 4: Patient Management – Inpatient",
+      "domain": "PC",
+      "keywords": [
+        "inpatient management",
+        "management plan",
+        "hospitalized patient",
+        "acuity and triage",
+        "shared decision making",
+        "high-value care",
+        "critical care",
+        "comorbid and multisystem disease",
+        "health maintenance"
+      ],
+      "related": ["PC3", "PC5", "MK2"]
+    },
+    {
+      "id": "PC5",
+      "name": "Patient Care 5: Patient Management – Outpatient",
+      "domain": "PC",
+      "keywords": [
+        "outpatient management",
+        "chronic disease management",
+        "health maintenance",
+        "preventive care",
+        "ambulatory care",
+        "motivational interviewing",
+        "multiple chronic conditions",
+        "value-based plan",
+        "social determinants"
+      ],
+      "related": ["PC3", "PC4", "SBP2"]
+    },
+    {
+      "id": "PC6",
+      "name": "Patient Care 6: Digital Health",
+      "domain": "PC",
+      "keywords": [
+        "electronic health record",
+        "EHR",
+        "telehealth",
+        "telemedicine",
+        "patient portal",
+        "e-consult",
+        "smart phrases and order sets",
+        "quality dashboard"
+      ],
+      "related": ["ICS3", "SBP2"]
+    },
+    {
+      "id": "MK1",
+      "name": "Medical Knowledge 1: Applied Foundational Sciences",
+      "domain": "MK",
+      "keywords": [
+        "pathophysiology",
+        "physiology",
+        "mechanism of disease",
+        "scientific knowledge",
+        "basic science",
+        "epidemiology",
+        "social determinants of health",
+        "foundational knowledge"
+      ],
+      "related": ["MK2", "MK3"]
+    },
+    {
+      "id": "MK2",
+      "name": "Medical Knowledge 2: Therapeutic Knowledge",
+      "domain": "MK",
+      "keywords": [
+        "therapeutic knowledge",
+        "treatment options",
+        "indications and contraindications",
+        "risks and benefits",
+        "antibiotic stewardship",
+        "pharmacologic and procedural therapies",
+        "drug therapy",
+        "treatment selection"
+      ],
+      "related": ["MK1", "MK3", "PC4"]
+    },
+    {
+      "id": "MK3",
+      "name": "Medical Knowledge 3: Knowledge of Diagnostic Testing",
+      "domain": "MK",
+      "keywords": [
+        "diagnostic testing",
+        "test interpretation",
+        "test characteristics",
+        "sensitivity and specificity",
+        "pretest probability",
+        "diagnostic strategy",
+        "lab and imaging interpretation",
+        "rationale risks and benefits"
+      ],
+      "related": ["MK1", "PC3"]
+    },
+    {
+      "id": "SBP1",
+      "name": "Systems-Based Practice 1: Patient Safety and Quality Improvement",
+      "domain": "SBP",
+      "keywords": [
+        "patient safety",
+        "quality improvement",
+        "QI project",
+        "adverse event",
+        "near miss",
+        "root cause analysis",
+        "safety event reporting",
+        "error disclosure",
+        "morbidity and mortality"
+      ],
+      "related": ["SBP2", "PBLI2"]
+    },
+    {
+      "id": "SBP2",
+      "name": "Systems-Based Practice 2: System Navigation for Patient-Centered Care",
+      "domain": "SBP",
+      "keywords": [
+        "care coordination",
+        "transitions of care",
+        "hand-off",
+        "interprofessional team",
+        "case management",
+        "population and community health",
+        "discharge coordination",
+        "community resources"
+      ],
+      "related": ["SBP1", "SBP3", "PC5", "ICS2"]
+    },
+    {
+      "id": "SBP3",
+      "name": "Systems-Based Practice 3: Physician Role in Health Care Systems",
+      "domain": "SBP",
+      "keywords": [
+        "health care system",
+        "payment systems",
+        "insurance and payer model",
+        "cost of care",
+        "Medicare and Medicaid",
+        "resource utilization",
+        "observation versus inpatient status",
+        "health policy advocacy"
+      ],
+      "related": ["SBP2", "PC4"]
+    },
+    {
+      "id": "PBLI1",
+      "name": "Practice-Based Learning and Improvement 1: Evidence-Based and Informed Practice",
+      "domain": "PBLI",
+      "keywords": [
+        "evidence-based practice",
+        "critical appraisal",
+        "clinical practice guidelines",
+        "journal club",
+        "primary literature",
+        "clinical question",
+        "patient preferences and values",
+        "best available evidence"
+      ],
+      "related": ["PBLI2", "MK1"]
+    },
+    {
+      "id": "PBLI2",
+      "name": "Practice-Based Learning and Improvement 2: Reflective Practice and Commitment to Personal Growth",
+      "domain": "PBLI",
+      "keywords": [
+        "reflective practice",
+        "self-reflection",
+        "seeks feedback",
+        "performance gaps",
+        "individualized learning plan",
+        "goal setting",
+        "humility and adaptability",
+        "personal and professional growth"
+      ],
+      "related": ["PBLI1", "PROF1", "SBP1"]
+    },
+    {
+      "id": "PROF1",
+      "name": "Professionalism 1: Professional Behavior",
+      "domain": "PROF",
+      "keywords": [
+        "professional behavior",
+        "professionalism lapse",
+        "punctuality",
+        "appropriate demeanor",
+        "accepts responsibility",
+        "compliance training",
+        "responds to triggers",
+        "coaches others on professionalism"
+      ],
+      "related": ["PROF2", "PROF3"]
+    },
+    {
+      "id": "PROF2",
+      "name": "Professionalism 2: Ethical Principles",
+      "domain": "PROF",
+      "keywords": [
+        "ethical principles",
+        "autonomy",
+        "beneficence",
+        "non-maleficence",
+        "justice",
+        "ethics consult",
+        "ethical dilemma",
+        "decision-making capacity"
+      ],
+      "related": ["PROF1"]
+    },
+    {
+      "id": "PROF3",
+      "name": "Professionalism 3: Accountability/Conscientiousness",
+      "domain": "PROF",
+      "keywords": [
+        "accountability",
+        "conscientiousness",
+        "timeliness",
+        "completes administrative tasks",
+        "discharge summaries",
+        "follow-through",
+        "reliability",
+        "work-hour logs"
+      ],
+      "related": ["PROF1", "ICS3"]
+    },
+    {
+      "id": "PROF4",
+      "name": "Professionalism 4: Knowledge of Systemic and Individual Factors of Well-Being",
+      "domain": "PROF",
+      "keywords": [
+        "well-being",
+        "burnout",
+        "wellness resources",
+        "institutional factors",
+        "emotional challenges of physician work",
+        "self-care",
+        "support and help-seeking",
+        "resilience"
+      ],
+      "related": ["PROF1"]
+    },
+    {
+      "id": "ICS1",
+      "name": "Interpersonal and Communication Skills 1: Patient- and Family-Centered Communication",
+      "domain": "ICS",
+      "keywords": [
+        "patient-centered communication",
+        "rapport",
+        "therapeutic relationship",
+        "shared decision making",
+        "teach-back",
+        "empathy",
+        "communication barriers",
+        "interpreter",
+        "avoids medical jargon"
+      ],
+      "related": ["PC1", "ICS2"]
+    },
+    {
+      "id": "ICS2",
+      "name": "Interpersonal and Communication Skills 2: Interprofessional and Team Communication",
+      "domain": "ICS",
+      "keywords": [
+        "team communication",
+        "consultation request and response",
+        "interprofessional team",
+        "closed-loop communication",
+        "conflict resolution",
+        "gives and receives feedback",
+        "values team members",
+        "difficult feedback"
+      ],
+      "related": ["SBP2", "ICS1", "ICS3"]
+    },
+    {
+      "id": "ICS3",
+      "name": "Interpersonal and Communication Skills 3: Communication within Health Care Systems",
+      "domain": "ICS",
+      "keywords": [
+        "documentation",
+        "progress notes",
+        "note quality",
+        "concise and thorough notes",
+        "communication formats",
+        "avoids stigmatizing language",
+        "telephone encounter",
+        "written and verbal communication"
+      ],
+      "related": ["PROF3", "PC6", "ICS2"]
+    }
+  ]
+}
