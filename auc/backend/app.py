@@ -28,6 +28,7 @@ import httpx
 
 from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
 import medhub_api
+import rag_retrieval
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -605,7 +606,9 @@ async def generate_summary(
         ) if medhub_rows else "No MedHub data available yet"
     )
 
-    prompt = (
+    # Legacy (ungrounded) prompt — retained as the fallback so the generator keeps
+    # working if the RAG ontology/index is unavailable.
+    legacy_prompt = (
         "You are helping a program director prepare for a Clinical Competency Committee meeting. "
         "Below is all available information about a resident, organized into two sections. "
         "Section 1 is manually entered committee notes, each tagged with an ACGME competency domain and source. "
@@ -616,6 +619,38 @@ async def generate_summary(
         f"[Section 1 - Committee Notes: {notes_text}] "
         f"[Section 2 - MedHub Evaluations: {medhub_text}]"
     )
+
+    # Retrieval step: route the evidence the endpoint already pulled to ACGME
+    # sub-competencies and ground it in the local index. Falls back to the legacy
+    # prompt (with a clear server-side message) if the ontology/index is missing.
+    resident_label = (
+        f"{resident['first_name']} {resident['last_name']}, PGY-{resident['pgy_year']}"
+    )
+    rag_comments = [
+        {
+            "text": n["content"],
+            "label": f"committee note, source={n['source'] or 'unknown'}, "
+                     f"tagged domain={n['acgme_domain'] or 'General'}, {n['created_at']}",
+        }
+        for n in notes
+    ] + [
+        {
+            "text": r["comments"],
+            "label": f"MedHub eval, rotation={r['rotation_name']}, "
+                     f"evaluator={r['evaluator_name']}, score={r['score']}, {r['evaluation_date']}",
+        }
+        for r in medhub_rows if r["comments"]
+    ]
+
+    try:
+        prompt, rag_routing = rag_retrieval.compose_prompt(resident_label, rag_comments)
+        print(
+            f"[generate-summary] RAG-grounded prompt for {resident_id}: "
+            f"{len(rag_routing)} competencies with evidence: {rag_routing}"
+        )
+    except rag_retrieval.RagUnavailable as e:
+        prompt = legacy_prompt
+        print(f"[generate-summary] RAG unavailable, using legacy prompt: {e}")
 
     sid = str(uuid.uuid4())[:8]
 
