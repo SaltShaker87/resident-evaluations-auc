@@ -118,6 +118,47 @@ systemctl --user start auc.service
 
 echo "  ✓ Auto-start configured"
 
+# ---- Automated daily backup ----
+echo ""
+echo "[5b/5] Configuring automated daily backup..."
+
+# Default backup destination. Point AUC_BACKUP_DIR at a synced folder
+# (e.g. your institutional OneDrive) so backups end up safely off this
+# machine. See auc/BACKUPS.md for the OneDrive-on-Linux setup.
+BACKUP_DIR="${AUC_BACKUP_DIR:-$HOME/auc-backups}"
+mkdir -p "$BACKUP_DIR"
+
+cat > "$HOME/.config/systemd/user/auc-backup.service" << EOF
+[Unit]
+Description=AUC daily backup (database + photos)
+
+[Service]
+Type=oneshot
+WorkingDirectory=$SCRIPT_DIR/backend
+ExecStart=$SCRIPT_DIR/backend/venv/bin/python backup.py
+Environment=AUC_BACKUP_DIR=$BACKUP_DIR
+Environment=AUC_BACKUP_KEEP_DAYS=14
+EOF
+
+cat > "$HOME/.config/systemd/user/auc-backup.timer" << EOF
+[Unit]
+Description=Run AUC backup once a day
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable auc-backup.timer
+systemctl --user start auc-backup.timer
+
+echo "  ✓ Daily backup configured (writing to: $BACKUP_DIR)"
+echo "    To send backups offsite, point them at OneDrive — see auc/BACKUPS.md"
+
 echo ""
 echo "  ╔══════════════════════════════════════╗"
 echo "  ║   Setup complete!                     ║"

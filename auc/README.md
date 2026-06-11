@@ -74,27 +74,19 @@ If you want to use a different Ollama model, edit the service file:
 4. Save and close (Ctrl+X, then Y, then Enter)
 5. Restart: `systemctl --user daemon-reload && systemctl --user restart auc`
 
-## Backing Up Your Data
+## Exporting & Backing Up Your Data
 
-All your data lives in one folder: `auc/data/`
+All your data lives in one folder: `auc/data/` (`auc.db` plus `photos/`).
 
-- `auc.db` — the database with all residents, notes, follow-ups, and summaries
-- `photos/` — uploaded resident photos
+Three ways to get data out, all explained in **`BACKUPS.md`**:
 
-The simplest reliable backup is the in-app button described below. If you'd
-rather copy files directly, let SQLite make the database copy so it isn't
-caught mid-write:
-
-```bash
-sqlite3 auc/data/auc.db ".backup /path/to/backups/auc-backup.db"
-cp -r auc/data/photos /path/to/backups/photos
-```
-
-Keep the backups on a different drive or machine. (Simply copying the whole
-`data` folder while the app is running can occasionally produce a corrupted
-copy of the database — use the command above instead.)
-
-You can also download a snapshot of the database from inside the app: go to **Settings → Data Management** and click **Download Database Backup**. This saves a dated copy (e.g. `auc-backup-2026-05-27.db`) to your computer. Note that this covers the database only, not uploaded photos — copy the `data` folder if you need those too.
+- **Export a summary as a PDF** — the **Export PDF** button on each approved
+  summary; saves a one-pager to your Downloads folder.
+- **Manual full backup** — **Settings → Download Full Backup (.zip)** saves a
+  complete copy (database **and** photos) to your Downloads folder.
+- **Automated daily backup** (recommended) — `setup.sh` installs a daily
+  background backup. Point it at a OneDrive-synced folder so copies go offsite
+  automatically. Setup and restore steps are in **`BACKUPS.md`**.
 
 ## File Structure
 
@@ -104,9 +96,12 @@ auc/
 ├── run.sh            ← created by setup, starts the app
 ├── README.md         ← you are here
 ├── SECURITY.md       ← record of security measures + password recovery
+├── BACKUPS.md        ← exporting PDFs + backup/restore + OneDrive setup
 ├── backend/
 │   ├── app.py        ← the Python server
 │   ├── auth.py       ← password & login handling
+│   ├── pdf_export.py ← builds summary PDFs
+│   ├── backup.py     ← full backup (db + photos), manual & scheduled
 │   ├── reset_password.py  ← last-resort password reset
 │   ├── requirements.txt
 │   └── venv/         ← created by setup

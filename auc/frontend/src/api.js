@@ -176,18 +176,19 @@ export const restoreSnapshot = (snapshotId) =>
 export const dismissSnapshot = (snapshotId) =>
   request(`/advancement/${snapshotId}/dismiss`, { method: 'POST' });
 
-// Data management
-export const downloadBackup = async () => {
-  const res = await fetch(`${BASE}/backup`);
+// Fetch a binary endpoint and trigger a browser download (saves to the
+// browser's Downloads folder). Used for backups and PDF exports.
+async function downloadFile(path, fallbackName) {
+  const res = await fetch(`${BASE}${path}`);
   if (res.status === 401) window.dispatchEvent(new Event('auc:unauthenticated'));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Backup failed' }));
+    const err = await res.json().catch(() => ({ detail: 'Download failed' }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
   }
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match ? match[1] : 'auc-backup.db';
+  const filename = match ? match[1] : fallbackName;
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -196,4 +197,11 @@ export const downloadBackup = async () => {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
-};
+}
+
+// Data management
+export const downloadBackup = () => downloadFile('/backup', 'auc-backup.zip');
+
+// Export an approved summary as a PDF
+export const exportSummaryPdf = (residentId, summaryId) =>
+  downloadFile(`/residents/${residentId}/summaries/${summaryId}/pdf`, 'summary.pdf');

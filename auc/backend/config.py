@@ -15,3 +15,15 @@ OLLAMA_MAX_TOKENS: int = int(os.environ.get("OLLAMA_MAX_TOKENS", "2048"))
 # ---------------------------------------------------------------------------
 MEDHUB_API_URL: str = os.environ.get("MEDHUB_API_URL", "")
 MEDHUB_API_KEY: str = os.environ.get("MEDHUB_API_KEY", "")
+
+# ---------------------------------------------------------------------------
+# Automated backups
+#
+# AUC_BACKUP_DIR   : Folder the daily backup writes into. Point this at a
+#                    cloud-synced folder (e.g. your institutional OneDrive)
+#                    so backups end up safely off this machine. Leave empty
+#                    to disable the automated backup. See auc/BACKUPS.md.
+# AUC_BACKUP_KEEP_DAYS : How many days of backups to keep before pruning.
+# ---------------------------------------------------------------------------
+BACKUP_DIR: str = os.environ.get("AUC_BACKUP_DIR", "")
+BACKUP_KEEP_DAYS: int = int(os.environ.get("AUC_BACKUP_KEEP_DAYS", "14"))

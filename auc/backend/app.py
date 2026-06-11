@@ -6,17 +6,20 @@ Backend API server for residency feedback management.
 import os
 import csv
 import io
+import re
 import json
 import sqlite3
 import shutil
 import uuid
+import tempfile
 from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from starlette.background import BackgroundTask
 from pydantic import BaseModel
 from typing import Optional, List, Literal
 import httpx
@@ -29,6 +32,8 @@ from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, 
 import medhub_api
 import rag_retrieval
 import auth
+import pdf_export
+import backup as backup_helper
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -459,17 +464,25 @@ def get_photo(filename: str):
 
 @app.get("/api/backup")
 def download_backup():
-    """Return the SQLite database file as a dated, downloadable backup."""
+    """Return a full backup (database + photos) as a dated .zip download."""
     if not DB_PATH.exists():
         raise HTTPException(status_code=404, detail="Database file not found")
-    # Flush the WAL into the main db file so the backup is current.
-    with db_connection() as conn:
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    filename = f"auc-backup-{date.today().isoformat()}.db"
+    # Build the zip into a temp file using the same logic as the scheduled
+    # backup, then stream it and delete the temp file afterward.
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip", prefix="auc-backup-")
+    os.close(fd)
+    tmp_path = Path(tmp_path)
+    try:
+        backup_helper.make_backup_zip(tmp_path)
+    except Exception as exc:  # noqa: BLE001
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}")
+    filename = f"auc-backup-{date.today().isoformat()}.zip"
     return FileResponse(
-        DB_PATH,
-        media_type="application/octet-stream",
+        tmp_path,
+        media_type="application/zip",
         filename=filename,
+        background=BackgroundTask(lambda: tmp_path.unlink(missing_ok=True)),
     )
 
 # ---------------------------------------------------------------------------
@@ -788,6 +801,40 @@ def delete_summary(summary_id: str):
     with db_connection() as conn:
         conn.execute("DELETE FROM summaries WHERE id = ?", (summary_id,))
     return {"message": "Summary deleted"}
+
+@app.get("/api/residents/{resident_id}/summaries/{summary_id}/pdf")
+def export_summary_pdf(resident_id: str, summary_id: str):
+    """Generate a one-page PDF of an approved summary for download."""
+    with db_connection() as conn:
+        resident = conn.execute(
+            "SELECT * FROM residents WHERE id = ?", (resident_id,)
+        ).fetchone()
+        if not resident:
+            raise HTTPException(status_code=404, detail="Resident not found")
+        summary = conn.execute(
+            "SELECT * FROM summaries WHERE id = ? AND resident_id = ?",
+            (summary_id, resident_id),
+        ).fetchone()
+
+    if not summary or not summary["approved"] or not summary["approved_text"]:
+        raise HTTPException(status_code=404, detail="Approved summary not found")
+
+    r = dict(resident)
+    approved_date = (summary["approved_at"] or summary["created_at"] or "")[:10]
+    pdf_bytes = pdf_export.render_summary_pdf(
+        first_name=r["first_name"],
+        last_name=r["last_name"],
+        pgy_year=r["pgy_year"],
+        summary_text=summary["approved_text"],
+        approved_date=approved_date,
+    )
+    safe_last = re.sub(r"[^A-Za-z0-9_-]", "", r["last_name"]) or "resident"
+    filename = f"summary-{safe_last}-{approved_date or date.today().isoformat()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 # ---------------------------------------------------------------------------
 # MedHub import endpoints

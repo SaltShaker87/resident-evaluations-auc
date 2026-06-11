@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Camera, Plus, Pencil, Trash2, Check,
-  Sparkles, ChevronDown, ChevronUp, X, AlertCircle,
+  Sparkles, ChevronDown, ChevronUp, X, AlertCircle, FileDown,
 } from 'lucide-react';
 import {
   getResident, updateResident, deleteResident, uploadPhoto,
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummary, approveSummary, deleteSummary, getOllamaModels,
+  exportSummaryPdf,
 } from '../api';
 import Avatar from '../components/Avatar';
 
@@ -495,7 +496,19 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
           <div className="summary-saved__label">Approved Summary</div>
           <div className="summary-saved__date">{formatDate(s.approved_at || s.created_at)}</div>
           <div className="summary-saved__text">{s.approved_text}</div>
-          <div className="mt-sm">
+          <div className="mt-sm flex gap-sm">
+            <button
+              className="btn btn--secondary btn--sm"
+              onClick={async () => {
+                try {
+                  await exportSummaryPdf(residentId, s.id);
+                } catch (err) {
+                  showToast(err.message || 'Could not export PDF');
+                }
+              }}
+            >
+              <FileDown size={13} /> Export PDF
+            </button>
             <button className="btn btn--ghost btn--sm" onClick={async () => { await deleteSummary(s.id); onChanged(); }}>
               <Trash2 size={13} /> Remove
             </button>

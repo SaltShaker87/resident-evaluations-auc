@@ -245,14 +245,16 @@ export default function Settings({ theme, setTheme }) {
 
         <div className="settings-row">
           <div>
-            <div className="settings-row__label">Download database backup</div>
+            <div className="settings-row__label">Download full backup (.zip)</div>
             <div className="settings-row__desc">
-              Downloads a copy of your entire database. Keep this somewhere safe.
+              Downloads a complete copy of your database and all resident photos as a
+              single .zip. Keep it somewhere safe. (An automated daily backup can also
+              run in the background — see BACKUPS.md.)
             </div>
           </div>
           <div className="settings-row__control" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
             <button className="btn btn--primary" onClick={handleBackup} disabled={backupBusy}>
-              <Download size={15} /> {backupBusy ? 'Preparing…' : 'Download Database Backup'}
+              <Download size={15} /> {backupBusy ? 'Preparing…' : 'Download Full Backup (.zip)'}
             </button>
             {backupDone && (
               <span className="text-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--green-600)' }}>
