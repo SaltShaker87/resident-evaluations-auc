@@ -14,12 +14,11 @@ from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 import httpx
 
 # ---------------------------------------------------------------------------
@@ -29,6 +28,7 @@ import httpx
 from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
 import medhub_api
 import rag_retrieval
+import auth
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -138,6 +138,21 @@ def init_db():
                 created_at TEXT DEFAULT (datetime('now')),
                 is_active INTEGER DEFAULT 1
             );
+
+            CREATE TABLE IF NOT EXISTS auth_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                recovery_hash TEXT NOT NULL,
+                recovery_salt TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            );
         """)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
@@ -190,24 +205,27 @@ class ResidentUpdate(BaseModel):
 class BulkResidentImport(BaseModel):
     residents: List[ResidentCreate]
 
+Sentiment = Literal["strength", "neutral", "concern"]
+Priority = Literal["routine", "important", "urgent"]
+
 class NoteCreate(BaseModel):
     content: str
     acgme_domain: Optional[str] = None
-    sentiment: Optional[str] = "neutral"
-    priority: Optional[str] = "routine"
+    sentiment: Optional[Sentiment] = "neutral"
+    priority: Optional[Priority] = "routine"
     source: Optional[str] = None
     note_date: Optional[str] = None
 
 class NoteUpdate(BaseModel):
     content: Optional[str] = None
     acgme_domain: Optional[str] = None
-    sentiment: Optional[str] = None
-    priority: Optional[str] = None
+    sentiment: Optional[Sentiment] = None
+    priority: Optional[Priority] = None
     source: Optional[str] = None
 
 class FollowupCreate(BaseModel):
     description: str
-    priority: Optional[str] = "routine"
+    priority: Optional[Priority] = "routine"
     note_date: Optional[str] = None
 
 class SummaryApproval(BaseModel):
@@ -232,13 +250,23 @@ class AdvancementExecute(BaseModel):
 
 app = FastAPI(title="AUC — Assessments Under Curve", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Frontend and API are served from the same origin (uvicorn in production,
+# the Vite proxy in development), so no CORS middleware is needed — and
+# omitting it means other websites' scripts cannot call this API.
+
+auth.init_auth(db_connection)
+app.include_router(auth.router)
+
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    """Every /api/* route except /api/auth/* requires a valid session."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/auth/"):
+        if not auth.is_authenticated(request):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+    return await call_next(request)
+
 
 @app.on_event("startup")
 def startup():
@@ -350,6 +378,24 @@ def delete_resident(resident_id: str):
         conn.execute("DELETE FROM residents WHERE id = ?", (resident_id,))
     return {"message": "Resident deleted"}
 
+ALLOWED_PHOTO_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
+
+def _photo_signature_matches(ext: str, content: bytes) -> bool:
+    """Check the file's magic bytes against its claimed image type."""
+    if ext in (".jpg", ".jpeg"):
+        return content.startswith(b"\xff\xd8")
+    if ext == ".png":
+        return content.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext == ".webp":
+        return len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+    return False
+
 @app.post("/api/residents/{resident_id}/photo")
 async def upload_photo(resident_id: str, file: UploadFile = File(...)):
     # Validate resident exists
@@ -358,12 +404,30 @@ async def upload_photo(resident_id: str, file: UploadFile = File(...)):
         if not row:
             raise HTTPException(status_code=404, detail="Resident not found")
 
-    # Save photo
-    ext = Path(file.filename).suffix or ".jpg"
+    # Validate file type and size before writing anything to disk
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_PHOTO_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Only .jpg, .jpeg, .png, or .webp photos are allowed",
+        )
+    content = await file.read(MAX_PHOTO_BYTES + 1)
+    if len(content) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=413, detail="Photo is too large (max 5 MB)")
+    if not _photo_signature_matches(ext, content):
+        raise HTTPException(
+            status_code=400,
+            detail="File contents don't match an allowed image type",
+        )
+
+    # Remove any previous photo for this resident (it may have a different extension)
     filename = f"{resident_id}{ext}"
-    filepath = PHOTOS_DIR / filename
-    with open(filepath, "wb") as f:
-        content = await file.read()
+    for old_ext in ALLOWED_PHOTO_TYPES:
+        old_path = PHOTOS_DIR / f"{resident_id}{old_ext}"
+        if old_path.exists() and old_path.name != filename:
+            old_path.unlink()
+
+    with open(PHOTOS_DIR / filename, "wb") as f:
         f.write(content)
 
     # Update resident record
@@ -376,10 +440,18 @@ async def upload_photo(resident_id: str, file: UploadFile = File(...)):
 
 @app.get("/api/photos/{filename}")
 def get_photo(filename: str):
-    filepath = PHOTOS_DIR / filename
-    if not filepath.exists():
+    # Strip any path components, allow only known image extensions, and make
+    # sure the resolved path stays inside the photos directory.
+    safe_name = Path(filename).name
+    media_type = ALLOWED_PHOTO_TYPES.get(Path(safe_name).suffix.lower())
+    filepath = (PHOTOS_DIR / safe_name).resolve()
+    if (
+        media_type is None
+        or not filepath.is_relative_to(PHOTOS_DIR.resolve())
+        or not filepath.is_file()
+    ):
         raise HTTPException(status_code=404, detail="Photo not found")
-    return FileResponse(filepath)
+    return FileResponse(filepath, media_type=media_type)
 
 # ---------------------------------------------------------------------------
 # Data management
@@ -989,8 +1061,11 @@ if FRONTEND_DIR.exists():
 
     @app.get("/{full_path:path}")
     def serve_frontend(full_path: str):
-        # Serve index.html for all non-API routes (SPA routing)
-        file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
+        # Serve index.html for all non-API routes (SPA routing).
+        # Resolve the path and refuse anything that escapes the dist folder
+        # (e.g. "/../data/auc.db") — those get index.html like any other
+        # unknown route.
+        file_path = (FRONTEND_DIR / full_path).resolve()
+        if file_path.is_relative_to(FRONTEND_DIR.resolve()) and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIR / "index.html")

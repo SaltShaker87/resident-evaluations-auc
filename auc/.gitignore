@@ -3,6 +3,10 @@ node_modules/
 __pycache__/
 *.pyc
 *.pyo
+venv/
+
+# App data — never commit the database or resident photos
+data/
 
 # Environment
 .env

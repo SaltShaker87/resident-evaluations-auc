@@ -10,12 +10,39 @@ async function request(path, options = {}) {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
   });
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    // Session expired or logged out elsewhere — send the app back to the login screen
+    window.dispatchEvent(new Event('auc:unauthenticated'));
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
   }
   return res.json();
 }
+
+// Auth
+export const getAuthStatus = () => request('/auth/status');
+
+export const setupPassword = (password) =>
+  request('/auth/setup', { method: 'POST', body: JSON.stringify({ password }) });
+
+export const login = (password) =>
+  request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) });
+
+export const logout = () => request('/auth/logout', { method: 'POST' });
+
+export const recoverPassword = (recoveryKey, newPassword) =>
+  request('/auth/recover', {
+    method: 'POST',
+    body: JSON.stringify({ recovery_key: recoveryKey, new_password: newPassword }),
+  });
+
+export const changePassword = (currentPassword, newPassword) =>
+  request('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 
 // Residents
 export const getResidents = (activeOnly = true) =>
@@ -42,7 +69,11 @@ export const uploadPhoto = async (residentId, file) => {
     method: 'POST',
     body: formData,
   });
-  if (!res.ok) throw new Error('Photo upload failed');
+  if (res.status === 401) window.dispatchEvent(new Event('auc:unauthenticated'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Photo upload failed' }));
+    throw new Error(err.detail || 'Photo upload failed');
+  }
   return res.json();
 };
 
@@ -113,6 +144,7 @@ export const parseMedhubCsv = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch(`${BASE}/medhub/parse-csv`, { method: 'POST', body: formData });
+  if (res.status === 401) window.dispatchEvent(new Event('auc:unauthenticated'));
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Parse failed' }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
@@ -147,6 +179,7 @@ export const dismissSnapshot = (snapshotId) =>
 // Data management
 export const downloadBackup = async () => {
   const res = await fetch(`${BASE}/backup`);
+  if (res.status === 401) window.dispatchEvent(new Event('auc:unauthenticated'));
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Backup failed' }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
