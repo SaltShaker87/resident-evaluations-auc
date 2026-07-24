@@ -7,8 +7,9 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Browse residents** — see all 35 residents at a glance, with photos, PGY year, and status (photos must be .jpg/.png/.webp, up to 5 MB)
 - **Quick-add notes** — jot observations during CCC meetings tagged with ACGME domains, sentiment (strength/concern), and priority
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
-- **AI-generated summaries** — press a button to generate a draft summary of a resident's strengths, growth areas, and recommended actions using your local Ollama model
-- **Edit and approve** — review AI drafts, edit them, and save the final version
+- **AI-generated summaries** — press a button to draft a summary across all 21 ACGME sub-competencies using your local Ollama model, with a suggested milestone level and the supporting quotes for each
+- **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; a section whose quotes don't check out is withheld rather than shown (see "How AI Summaries Work" below)
+- **Edit and approve** — review each section, adjust the narrative or level, and save the final version
 - **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
 - **Password protected** — a single shared password guards all resident data (see "Logging In" below)
 
@@ -64,15 +65,65 @@ These commands are typed in your terminal:
 | Check if it's running | `systemctl --user status auc` |
 | View error logs | `journalctl --user -u auc -f` |
 
+## How AI Summaries Work
+
+When you press **Generate Summary**, the app does *not* ask the model to write the
+whole report in one go. Instead:
+
+1. Each note and MedHub comment is routed to the ACGME sub-competencies it relates to.
+2. The app builds the report skeleton itself from the ACGME ontology — always the
+   same **21 sub-competencies**, in the same order. The model never decides which
+   sub-competencies exist, so it cannot invent one.
+3. Each sub-competency that has at least one routed comment gets **its own small
+   model call**, containing only that sub-competency's ACGME descriptor and only its
+   own comments. The model writes 2–3 sentences in its own words and suggests a level.
+4. Sub-competencies with no routed comments are marked "No evidence this cycle"
+   without calling the model at all.
+5. **Every quote is verified.** A quote that does not appear word-for-word in the
+   comments routed to that sub-competency is dropped. If none of a section's quotes
+   survive, its narrative and level are thrown away and the card reads "insufficient
+   evidence" — unsupported text is never shown to you.
+
+Sections appear one at a time as they finish, with a "7 of 21" counter, so a slow
+model shows visible progress instead of leaving you waiting for one big result.
+
+> **Suggested levels are drafts for the Clinical Competency Committee to discuss —
+> they are not final determinations.**
+
+### What got dropped, and why
+
+Every dropped quote and every discarded narrative is logged, with its full text, to:
+
+```
+auc/data/logs/summary_validation.log
+```
+
+Read it any time (`tail -f auc/data/logs/summary_validation.log`) to see exactly what
+the model tried to claim and what the app refused to show.
+
+### A note on small models
+
+Smaller models tend to paraphrase instead of quoting exactly, so more of their
+sections get withheld as "insufficient evidence." That is the evidence check working
+as designed, not a bug. If you see a lot of withheld sections, try a larger model.
+
 ## Changing the AI Model
 
-If you want to use a different Ollama model, edit the service file:
+The quickest way is the **model dropdown** next to the Generate Summary button — it
+lists every model installed in Ollama and applies to that run only.
+
+To change the default for everyone, edit the service file:
 
 1. Open the file: `nano ~/.config/systemd/user/auc.service`
 2. Find the line that says `Environment=OLLAMA_MODEL=qwen3:8b`
 3. Change `qwen3:8b` to whatever model you want (e.g., `llama3:8b`)
 4. Save and close (Ctrl+X, then Y, then Enter)
 5. Restart: `systemctl --user daemon-reload && systemctl --user restart auc`
+
+To point *only* the summary generator at a different model, add
+`Environment=AUC_SUMMARY_MODEL=your-model` to the same file. The equivalent code
+setting is `SUMMARY_MODEL` at the top of `backend/summary_builder.py`, along with the
+request timeout (600 seconds per sub-competency) and context/temperature options.
 
 ## Exporting & Backing Up Your Data
 
@@ -100,15 +151,19 @@ auc/
 ├── backend/
 │   ├── app.py        ← the Python server
 │   ├── auth.py       ← password & login handling
+│   ├── summary_builder.py ← AI summaries: one call per sub-competency + quote checking
+│   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies
 │   ├── pdf_export.py ← builds summary PDFs
 │   ├── backup.py     ← full backup (db + photos), manual & scheduled
 │   ├── reset_password.py  ← last-resort password reset
 │   ├── requirements.txt
 │   └── venv/         ← created by setup
+├── rag/              ← ACGME ontology + reference documents (see rag/README.md)
 ├── frontend/
 │   ├── src/          ← the user interface code
 │   └── dist/         ← built by setup, served to your browser
 └── data/
     ├── auc.db        ← your database (created on first run)
-    └── photos/       ← resident photos
+    ├── photos/       ← resident photos
+    └── logs/         ← summary_validation.log: what the AI claimed vs. what was kept
 ```

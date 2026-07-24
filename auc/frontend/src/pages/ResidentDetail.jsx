@@ -8,10 +8,11 @@ import {
   getResident, updateResident, deleteResident, uploadPhoto,
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
-  getSummaries, generateSummary, approveSummary, deleteSummary, getOllamaModels,
+  getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
   exportSummaryPdf,
 } from '../api';
 import Avatar from '../components/Avatar';
+import SummaryReport from '../components/SummaryReport';
 
 const DOMAINS = [
   'Patient Care',
@@ -331,10 +332,41 @@ function NotesTimeline({ notes, onChanged }) {
 
 // ---- AI Summary Section ----
 
+const DRAFT_DISCLAIMER =
+  'Suggested levels are drafts for the Clinical Competency Committee to discuss — ' +
+  'not final determinations.';
+
+// Approved summaries are stored as JSON now; anything older is a markdown blob.
+function parseStructuredSummary(text) {
+  if (!text || !text.trimStart().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed?.schema === 'auc.summary.v1' ? parsed : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// Parse an SSE frame ("event: name\ndata: {...}") into { event, data }.
+function parseSseFrame(frame) {
+  let event = 'message';
+  const dataLines = [];
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+  }
+  if (dataLines.length === 0) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join('\n')) };
+  } catch (_e) {
+    return null;
+  }
+}
+
 function SummarySection({ residentId, summaries, noteCount, onChanged, showToast }) {
   const [generating, setGenerating] = useState(false);
-  const [draft, setDraft] = useState(null);
-  const [editText, setEditText] = useState('');
+  const [report, setReport] = useState(null);
+  const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [summaryId, setSummaryId] = useState(null);
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
@@ -357,14 +389,18 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
     });
   }, []);
 
+  const resetDraft = () => {
+    setReport(null);
+    setProgress({ completed: 0, total: 0 });
+    setSummaryId(null);
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
-    setDraft({ id: null });
-    setEditText('');
-    setSummaryId(null);
+    resetDraft();
 
     try {
-      const response = await generateSummary(residentId, selectedModel || null);
+      const response = await generateSummaryStream(residentId, selectedModel || null);
       if (!response.ok) {
         const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
         throw new Error(err.detail || `HTTP ${response.status}`);
@@ -373,59 +409,76 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let failed = false;
+      let finished = false;   // local: setSummaryId's state isn't readable in this closure
 
-      const processLine = (line) => {
-        if (!line.trim()) return;
-        let msg;
-        try { msg = JSON.parse(line); } catch (_e) { return; }
-        if (msg.token) {
-          setEditText((prev) => prev + msg.token);
-        } else if (msg.done && msg.id) {
-          setSummaryId(msg.id);
-          setDraft({ id: msg.id });
-        } else if (msg.error) {
-          showToast(msg.error);
-          setDraft(null);
-          setEditText('');
+      const processFrame = (frame) => {
+        const parsed = parseSseFrame(frame);
+        if (!parsed) return;
+        const { event, data } = parsed;
+
+        if (event === 'start') {
+          // The skeleton comes from the backend's ontology, so all 21 cards render
+          // straight away and fill in place as results arrive.
+          setReport({
+            schema: 'auc.summary.v1',
+            resident: data.resident,
+            model: data.model,
+            sections: data.sections,
+          });
+          setProgress({ completed: 0, total: data.total });
+        } else if (event === 'subcompetency') {
+          setReport((prev) => (prev ? {
+            ...prev,
+            sections: prev.sections.map((s) => (s.id === data.id ? data : s)),
+          } : prev));
+          setProgress({ completed: data.completed, total: data.total });
+        } else if (event === 'done') {
+          finished = true;
+          setSummaryId(data.summary_id);
+          setProgress({ completed: data.completed, total: data.total });
+        } else if (event === 'error') {
+          failed = true;
+          showToast(data.message || 'Failed to generate summary');
+          resetDraft();
         }
       };
 
+      // SSE frames are separated by a blank line.
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        lines.forEach(processLine);
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop();
+        frames.forEach(processFrame);
       }
-      // flush any remaining buffered line (e.g. stream ended without trailing newline)
-      if (buffer.trim()) processLine(buffer);
+      if (buffer.trim()) processFrame(buffer);
+
+      if (!failed && !finished) {
+        // Stream ended without a done event — the run was cut short server-side.
+        // The partial draft stays on screen but has no id, so Approve stays disabled.
+        showToast('Generation ended early — the draft is incomplete.');
+      }
     } catch (err) {
       showToast(err.message || 'Failed to generate summary');
-      setDraft(null);
-      setEditText('');
+      resetDraft();
     } finally {
       setGenerating(false);
     }
   };
 
   const handleApprove = async () => {
-    const idToApprove = summaryId || draft?.id;
-    if (!idToApprove) { showToast('No summary ID — cannot approve'); return; }
-    await approveSummary(idToApprove, editText);
-    setDraft(null);
-    setEditText('');
-    setSummaryId(null);
+    if (!summaryId) { showToast('No summary ID — cannot approve'); return; }
+    await approveSummary(summaryId, JSON.stringify(report));
+    resetDraft();
     showToast('Summary approved and saved');
     onChanged();
   };
 
   const handleDiscard = async () => {
-    const idToDelete = summaryId || draft?.id;
-    if (idToDelete) await deleteSummary(idToDelete);
-    setDraft(null);
-    setEditText('');
-    setSummaryId(null);
+    if (summaryId) await deleteSummary(summaryId);
+    resetDraft();
   };
 
   return (
@@ -472,14 +525,31 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
         </div>
       )}
 
-      {draft && (
+      {report && (
         <div className="summary-draft">
-          <div className="summary-draft__label">AI-Generated Draft — Review & Edit</div>
-          <textarea
-            className="summary-editor"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-          />
+          <div className="summary-draft__head">
+            <div className="summary-draft__label">AI-Generated Draft — Review & Edit</div>
+            {generating && progress.total > 0 && (
+              <div className="summary-progress">
+                <span className="summary-progress__count">
+                  {progress.completed} of {progress.total}
+                </span>
+                <div className="summary-progress__bar">
+                  <div
+                    className="summary-progress__fill"
+                    style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="summary-disclaimer">
+            <AlertCircle size={14} /> {DRAFT_DISCLAIMER}
+          </div>
+
+          <SummaryReport report={report} editable onChange={setReport} />
+
           {!generating && (
             <div className="flex gap-sm mt-md">
               <button className="btn btn--primary" onClick={handleApprove} disabled={!summaryId}>
@@ -491,30 +561,43 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
         </div>
       )}
 
-      {summaries.filter((s) => s.approved).map((s) => (
-        <div key={s.id} className="summary-saved mt-md">
-          <div className="summary-saved__label">Approved Summary</div>
-          <div className="summary-saved__date">{formatDate(s.approved_at || s.created_at)}</div>
-          <div className="summary-saved__text">{s.approved_text}</div>
-          <div className="mt-sm flex gap-sm">
-            <button
-              className="btn btn--secondary btn--sm"
-              onClick={async () => {
-                try {
-                  await exportSummaryPdf(residentId, s.id);
-                } catch (err) {
-                  showToast(err.message || 'Could not export PDF');
-                }
-              }}
-            >
-              <FileDown size={13} /> Export PDF
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={async () => { await deleteSummary(s.id); onChanged(); }}>
-              <Trash2 size={13} /> Remove
-            </button>
+      {summaries.filter((s) => s.approved).map((s) => {
+        const structured = parseStructuredSummary(s.approved_text);
+        return (
+          <div key={s.id} className="summary-saved mt-md">
+            <div className="summary-saved__label">Approved Summary</div>
+            <div className="summary-saved__date">{formatDate(s.approved_at || s.created_at)}</div>
+            {structured ? (
+              <>
+                <div className="summary-disclaimer">
+                  <AlertCircle size={14} /> {DRAFT_DISCLAIMER}
+                </div>
+                <SummaryReport report={structured} />
+              </>
+            ) : (
+              // Summaries approved before the structured format was introduced.
+              <div className="summary-saved__text">{s.approved_text}</div>
+            )}
+            <div className="mt-sm flex gap-sm">
+              <button
+                className="btn btn--secondary btn--sm"
+                onClick={async () => {
+                  try {
+                    await exportSummaryPdf(residentId, s.id);
+                  } catch (err) {
+                    showToast(err.message || 'Could not export PDF');
+                  }
+                }}
+              >
+                <FileDown size={13} /> Export PDF
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={async () => { await deleteSummary(s.id); onChanged(); }}>
+                <Trash2 size={13} /> Remove
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

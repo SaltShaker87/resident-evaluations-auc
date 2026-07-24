@@ -127,6 +127,14 @@ export const generateSummary = (residentId, model = null) => {
   return fetch(`${BASE}/residents/${residentId}/generate-summary${qs}`, { method: 'POST' });
 };
 
+// Returns raw Response for streaming — caller reads body as an SSE stream.
+// EventSource is deliberately not used: it cannot POST, and its auto-reconnect
+// would silently re-run the whole generation every time the stream closes.
+export const generateSummaryStream = (residentId, model = null) => {
+  const qs = model ? `?model=${encodeURIComponent(model)}` : '';
+  return fetch(`${BASE}/residents/${residentId}/summary-stream${qs}`, { method: 'POST' });
+};
+
 export const approveSummary = (summaryId, approvedText) =>
   request(`/summaries/${summaryId}/approve`, {
     method: 'PUT',

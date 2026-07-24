@@ -31,6 +31,7 @@ import httpx
 from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
 import medhub_api
 import rag_retrieval
+import summary_builder
 import auth
 import pdf_export
 import backup as backup_helper
@@ -784,6 +785,95 @@ async def generate_summary(
             yield json.dumps({"error": f"Error generating summary: {str(e)}"}) + "\n"
 
     return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+
+
+def _load_resident_evidence(resident_id: str):
+    """Return (resident_row, resident_label, comments) for summary generation.
+
+    comments are in rag_retrieval's {"text", "label"} shape.
+    """
+    with db_connection() as conn:
+        resident = conn.execute(
+            "SELECT * FROM residents WHERE id = ?", (resident_id,)
+        ).fetchone()
+        if not resident:
+            raise HTTPException(status_code=404, detail="Resident not found")
+
+        notes = conn.execute(
+            "SELECT * FROM notes WHERE resident_id = ? ORDER BY created_at",
+            (resident_id,)
+        ).fetchall()
+
+        medhub_rows = conn.execute(
+            "SELECT * FROM medhub_evaluations WHERE resident_id = ? ORDER BY evaluation_date",
+            (resident_id,)
+        ).fetchall()
+
+    if not notes:
+        raise HTTPException(status_code=400, detail="No notes to summarize")
+
+    resident_label = (
+        f"{resident['first_name']} {resident['last_name']}, PGY-{resident['pgy_year']}"
+    )
+    comments = [
+        {
+            "text": n["content"],
+            "label": f"committee note, source={n['source'] or 'unknown'}, "
+                     f"tagged domain={n['acgme_domain'] or 'General'}, {n['created_at']}",
+        }
+        for n in notes
+    ] + [
+        {
+            "text": r["comments"],
+            "label": f"MedHub eval, rotation={r['rotation_name']}, "
+                     f"evaluator={r['evaluator_name']}, score={r['score']}, {r['evaluation_date']}",
+        }
+        for r in medhub_rows if r["comments"]
+    ]
+
+    return resident, resident_label, comments
+
+
+@app.post("/api/residents/{resident_id}/summary-stream")
+async def stream_summary(
+    resident_id: str,
+    model: Optional[str] = Query(None),
+):
+    """Stream a structured summary over SSE, one sub-competency at a time.
+
+    Emits `start` (the full ontology skeleton), one `subcompetency` event per section
+    as it completes, and a final `done`. The report row is written on `done`, matching
+    the older endpoint's behaviour: an abandoned run leaves nothing behind.
+    """
+    _resident, resident_label, comments = _load_resident_evidence(resident_id)
+
+    async def event_stream():
+        try:
+            async for event, payload in summary_builder.generate_report(
+                resident_id, resident_label, comments, model=model
+            ):
+                if event == "done":
+                    report = payload.pop("report")
+                    with db_connection() as conn:
+                        conn.execute(
+                            "INSERT INTO summaries (id, resident_id, ai_draft) VALUES (?, ?, ?)",
+                            (payload["summary_id"], resident_id, json.dumps(report)),
+                        )
+                yield summary_builder.sse(event, payload)
+        except Exception as e:
+            print(f"[summary-stream] failed for {resident_id}: {e}")
+            yield summary_builder.sse("error", {"message": f"Error generating summary: {e}"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 @app.put("/api/summaries/{summary_id}/approve")
 def approve_summary(summary_id: str, data: SummaryApproval):

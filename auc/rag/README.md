@@ -39,23 +39,50 @@ to any third-party service. The only network calls are to the local Ollama serve
 
 ## How it grounds the summary generator
 
-The generator integration lives in the backend at
-[`../backend/rag_retrieval.py`](../backend/rag_retrieval.py). When a summary is
-generated (`POST /api/residents/{id}/generate-summary`), before the model is
-called it:
+Retrieval lives in [`../backend/rag_retrieval.py`](../backend/rag_retrieval.py);
+generation lives in
+[`../backend/summary_builder.py`](../backend/summary_builder.py). The current
+summary endpoint is `POST /api/residents/{id}/summary-stream`, which streams
+Server-Sent Events — one event per sub-competency as it completes, then a `done`
+event.
+
+The key design rule is that **Python owns the report and the model only fills in
+slots**:
 
 1. Gathers the resident's evidence (committee notes + MedHub comments).
 2. Routes each comment to sub-competencies by ontology keyword match; any comment
    that matches no keyword falls back to a semantic search of the index, so
-   nothing is dropped.
-3. For every sub-competency with evidence, fetches **both** of its chunks (the
-   milestone level descriptors and the supplemental-guide examples).
-4. Builds a prompt grouping the evidence by competency domain with the retrieved
-   ACGME material, asking the model to draft a development summary with suggested
-   milestone levels (1–5) framed as a draft for the Clinical Competency Committee.
+   nothing is dropped. *(`route_comments`, unchanged.)*
+3. Builds the report skeleton from `ontology/acgme_ontology.json` — always all
+   **21** sub-competencies, ordered by domain. The model never sees this list and
+   therefore cannot invent a sub-competency that isn't in the ontology.
+4. For each sub-competency **that has routed evidence**, fetches both of its chunks
+   (milestone level descriptors + supplemental-guide examples) and makes **one small
+   model call** containing only that sub-competency's descriptor and only its own
+   comments. The model returns JSON: a suggested level (1–5), a 2–3 sentence
+   narrative in its own words, and exact quotes. The prompt forbids reusing
+   descriptor language — the descriptor is reference material for forming a
+   judgment, not source text.
+5. Sub-competencies with **no** routed evidence are filled in by Python as "No
+   evidence this cycle". No model call is made for them.
+6. **Validation.** Every returned quote must appear verbatim (case-insensitive) in
+   the comments actually routed to that sub-competency; quotes that don't are
+   dropped. If no quotes survive, the narrative and level are discarded and the
+   section is marked "insufficient evidence" — unsupported narrative text is never
+   sent to the client. Dropped quotes and discarded narratives are logged in full to
+   `auc/data/logs/summary_validation.log`.
 
-If the ontology or index is missing, the generator falls back to its original
-(ungrounded) prompt with a clear server-side message instead of crashing.
+Malformed JSON is retried once for that sub-competency alone, then marked
+`generation_failed`; one bad section never takes down the report.
+
+Model, timeout (600s per call), and options are configured at the top of
+`summary_builder.py` (`SUMMARY_MODEL`, overridable with the `AUC_SUMMARY_MODEL`
+environment variable, or per-run via the model dropdown in the UI).
+
+If the ontology or index is missing, the stream emits an `error` event explaining
+what to rebuild. The older token-streaming endpoint
+(`POST /api/residents/{id}/generate-summary`, NDJSON) is still present and still
+uses `compose_prompt` for its single combined prompt.
 
 ## Setup / rebuild
 

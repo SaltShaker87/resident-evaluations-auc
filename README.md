@@ -7,8 +7,13 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Browse residents** — see all 35 residents at a glance, with photos, PGY year, and status
 - **Quick-add notes** — jot observations during CCC meetings tagged with ACGME domains, sentiment (strength/concern), and priority
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
-- **AI-generated summaries** — press a button to generate a draft summary of a resident's strengths, growth areas, and recommended actions using your local Ollama model
-- **Edit and approve** — review AI drafts, edit them, and save the final version
+- **AI-generated summaries** — press a button to draft a summary across all 21 ACGME sub-competencies using your local Ollama model, with a suggested milestone level and supporting quotes for each
+- **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; sections whose quotes don't check out are withheld
+- **Edit and approve** — review each section, adjust the narrative or level, and save the final version
+
+> Suggested levels are drafts for Clinical Competency Committee discussion, not final
+> determinations. See `auc/README.md` for how summary generation and the evidence
+> check work.
 
 ## Requirements
 
