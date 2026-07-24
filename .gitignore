@@ -1,0 +1,41 @@
+# Repo-root ignore rules.
+#
+# auc/.gitignore only governs paths under auc/. This file is the catch-all for
+# anything that lands elsewhere in the repo.
+#
+# NOTE: gitignore has no effect on files git already tracks. If something
+# sensitive is showing up in commits despite matching a rule here, it is being
+# tracked and needs `git rm --cached <path>` to stop.
+#
+# Check for that class of bug with:
+#   git ls-files | while read f; do git check-ignore -q "$f" && echo "STILL TRACKED: $f"; done
+
+# --- Resident data: never commit, in any location ---
+*.db
+*.sqlite
+*.sqlite3
+# SQLite runs in WAL mode; these sidecars hold recent writes not yet in the .db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# MedHub exports — real evaluator comments and scores for named residents
+*.csv
+
+# Backup archives (backup.py output: database + photos), exported summary PDFs
+*.zip
+*.pdf
+*.bak
+*.dump
+
+# --- Local tool / environment state ---
+.claude/settings.local.json
+.env
+.env.local
+.env.*.local
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

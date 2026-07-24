@@ -5,8 +5,24 @@ __pycache__/
 *.pyo
 venv/
 
-# App data — never commit the database or resident photos
+# App data — never commit the database, resident photos, or the validation log
 data/
+
+# Belt-and-braces: a database copy that lands outside data/ is still caught.
+# SQLite runs in WAL mode, so the -wal/-shm sidecars can hold rows that are not
+# in the .db file yet — they leak data on their own.
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+
+# MedHub CSV exports (real evaluator comments and scores), backup archives
+# from backup.py (database + photos), and exported summary PDFs.
+*.csv
+*.zip
+*.pdf
 
 # Environment
 .env
