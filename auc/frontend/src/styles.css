@@ -1943,3 +1943,629 @@ body {
   background: var(--red-50);
   color: var(--red-600);
 }
+
+/* ============================================================
+   CCC meeting capture
+   ============================================================
+
+   Everything here is additive. No rule above this line is modified, and every
+   selector below is inert unless a meeting is running:
+
+   - `.ccc-banner ~ .app-header` needs the banner element to exist, so it cannot
+     match when no session is active. That is how the header gets pushed down
+     without touching its own `top: 0`.
+   - `--ccc-banner-offset`, `--ccc-pill-offset` and `--ccc-drawer-width` are set on
+     the root element by the components while mounted and removed on unmount, so the
+     var() fallbacks resolve to the pre-existing values when idle. Inside calc() the
+     fallback must be `0px`, not `0`.
+   - Layering, against what already exists (header 100, modal 200, wizard 250,
+     toast 300): banner 110, pill 140, drawer 150. The drawer deliberately sits
+     BELOW the modal and wizard overlays so those still work on top of it.
+   ============================================================ */
+
+.ccc-banner {
+  position: sticky;
+  top: 0;
+  z-index: 110;
+  flex: 0 0 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 2rem;
+  background: var(--amber-100);
+  color: var(--amber-700);
+  border-bottom: 1px solid var(--amber-500);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .ccc-banner {
+  background: #3a2d10;
+  color: var(--amber-500);
+  border-bottom-color: var(--amber-600);
+}
+
+.ccc-banner__label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ccc-banner__pending {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.ccc-banner__end {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ccc-banner__end:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="dark"] .ccc-banner__end:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Sibling selector: only matches while the banner is on screen. */
+.ccc-banner ~ .app-header {
+  top: 34px;
+}
+
+/* ---- Start control ---- */
+
+.ccc-start {
+  position: relative;
+}
+
+.ccc-start__trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ccc-start__trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.ccc-start__popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 160;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.ccc-start__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ccc-start__field input {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+}
+
+.ccc-start__error {
+  font-size: 0.75rem;
+  color: var(--red-600);
+}
+
+/* ---- Toggle pill ---- */
+
+.ccc-pill {
+  position: fixed;
+  z-index: 140;
+  bottom: 1.5rem;
+  /* Steps left out from under the drawer when it opens. */
+  right: calc(1.5rem + var(--ccc-drawer-width, 0px));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--blue-600);
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: right 0.2s ease, background 0.15s;
+}
+
+.ccc-pill:hover {
+  background: var(--blue-700);
+}
+
+.ccc-pill__pending {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--amber-500);
+  color: var(--slate-900);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* The toast container is anchored to exactly the pill's corner, so lift it clear
+   while the pill is on screen. Scoped to a body class the pill adds and removes. */
+body.ccc-pill-on .toast-container {
+  bottom: calc(1.5rem + var(--ccc-pill-offset, 0px));
+}
+
+/* ---- Drawer ---- */
+
+.ccc-drawer {
+  position: fixed;
+  z-index: 150;
+  /* Clears the banner and the header, so the nav stays clickable. */
+  top: calc(var(--ccc-banner-offset, 0px) + 64px);
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.25rem 5rem;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+  animation: ccc-drawer-in 0.18s ease-out;
+}
+
+@keyframes ccc-drawer-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.ccc-drawer__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: -1rem -1.25rem 0.75rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ccc-drawer__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ccc-drawer__sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ccc-drawer__close {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: var(--radius-sm);
+}
+
+.ccc-drawer__close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.ccc-drawer__offline {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--amber-50);
+  color: var(--amber-700);
+  border: 1px solid var(--amber-500);
+  font-size: 0.75rem;
+}
+
+[data-theme="dark"] .ccc-drawer__offline {
+  background: #3a2d10;
+  color: var(--amber-500);
+}
+
+/* ---- Sections and fields ---- */
+
+.ccc-section {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ccc-section:last-of-type {
+  border-bottom: none;
+}
+
+.ccc-section__title {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.1rem;
+}
+
+.ccc-section__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.ccc-field {
+  margin-top: 0.7rem;
+}
+
+.ccc-field__label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+}
+
+.ccc-input {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  resize: vertical;
+}
+
+.ccc-input:focus {
+  outline: none;
+  border-color: var(--blue-500);
+}
+
+/* ---- Choice buttons ---- */
+
+.ccc-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.ccc-choice__btn {
+  flex: 1 1 auto;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.ccc-choice--lg .ccc-choice__btn {
+  padding: 0.65rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.ccc-choice__btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.ccc-choice__btn.is-active {
+  background: var(--blue-600);
+  border-color: var(--blue-600);
+  color: #ffffff;
+}
+
+.ccc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.ccc-chip {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.ccc-chip.is-active {
+  background: var(--blue-100);
+  border-color: var(--blue-500);
+  color: var(--blue-700);
+}
+
+[data-theme="dark"] .ccc-chip.is-active {
+  background: rgba(37, 99, 235, 0.22);
+  color: var(--blue-200);
+}
+
+/* ---- Prior action items ---- */
+
+.ccc-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ccc-item {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--amber-500);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  transition: opacity 0.15s;
+}
+
+.ccc-item.is-checked {
+  border-left-color: var(--green-500);
+  opacity: 0.6;
+}
+
+.ccc-item.is-resolved {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.ccc-item__text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.ccc-item__tick {
+  flex: 0 0 auto;
+  color: var(--green-600);
+}
+
+.ccc-item__owner {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.ccc-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+.ccc-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.ccc-mini:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.ccc-mini.is-active {
+  background: var(--green-100);
+  border-color: var(--green-500);
+  color: var(--green-700);
+}
+
+[data-theme="dark"] .ccc-mini.is-active {
+  background: rgba(34, 197, 94, 0.18);
+  color: var(--green-500);
+}
+
+.ccc-mini--quiet {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.ccc-mini--danger:hover {
+  border-color: var(--red-500);
+  color: var(--red-600);
+}
+
+/* ---- Contribution cards ---- */
+
+.ccc-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.ccc-card {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--blue-500);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+
+.ccc-card--collapsed {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccc-card--collapsed:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.ccc-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.ccc-card__meta {
+  margin-right: auto;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.ccc-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.5rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ccc-add:hover:not(:disabled) {
+  border-color: var(--blue-500);
+  color: var(--blue-600);
+}
+
+.ccc-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ccc-add--quiet {
+  font-size: 0.75rem;
+  padding: 0.35rem;
+}
+
+.ccc-itemrow {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.ccc-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.65rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--green-600);
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ccc-done:hover {
+  background: var(--green-700);
+}
+
+/* ---- Study data page ---- */
+
+.ccc-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.ccc-totals strong {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+}
+
+.ccc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}

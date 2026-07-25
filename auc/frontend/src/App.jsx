@@ -1,12 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
-import { Users, ClipboardList, Upload, Settings as SettingsIcon, LogOut } from 'lucide-react';
+import { Users, ClipboardList, Upload, FlaskConical, Settings as SettingsIcon, LogOut } from 'lucide-react';
 import ResidentList from './pages/ResidentList';
 import ResidentDetail from './pages/ResidentDetail';
 import FollowupDashboard from './pages/FollowupDashboard';
 import MedhubImport from './pages/MedhubImport';
 import SettingsPage from './pages/Settings';
+import StudyData from './pages/StudyData';
 import Login from './pages/Login';
+import { CccProvider } from './ccc/CccContext';
+import CccBanner from './ccc/CccBanner';
+import CccStartButton from './ccc/CccStartButton';
+import CccDrawerHost from './ccc/CccDrawerHost';
 import { getAuthStatus, logout } from './api';
 
 function ToastContainer({ toasts }) {
@@ -83,7 +88,11 @@ export default function App() {
   }
 
   return (
+    // CccProvider renders no DOM node of its own, so .app-layout stays the direct child.
+    // It lives inside the authenticated branch so it never calls the CCC API before login.
+    <CccProvider>
     <div className="app-layout">
+      <CccBanner />
       <header className="app-header">
         <Link to="/" className="app-header__brand">
           <div className="app-header__logo">AUC</div>
@@ -102,9 +111,13 @@ export default function App() {
           <NavLink to="/medhub" className={({ isActive }) => isActive ? 'active' : ''}>
             <Upload size={16} /> MedHub Import
           </NavLink>
+          <NavLink to="/study" className={({ isActive }) => isActive ? 'active' : ''}>
+            <FlaskConical size={16} /> Study Data
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>
             <SettingsIcon size={16} /> Settings
           </NavLink>
+          <CccStartButton />
           <button className="app-header__logout" onClick={handleLogout} title="Log out">
             <LogOut size={16} /> Log Out
           </button>
@@ -116,10 +129,15 @@ export default function App() {
           <Route path="/residents/:id" element={<ResidentDetail showToast={showToast} />} />
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
+          <Route path="/study" element={<StudyData showToast={showToast} />} />
           <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} />} />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />
+      {/* Renders nothing unless a CCC meeting is running and we are on a resident page.
+          Mounted here rather than inside ResidentDetail so no existing page changes. */}
+      <CccDrawerHost showToast={showToast} />
     </div>
+    </CccProvider>
   );
 }

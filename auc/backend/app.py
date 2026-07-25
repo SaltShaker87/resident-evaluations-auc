@@ -33,6 +33,7 @@ import medhub_api
 import rag_retrieval
 import summary_builder
 import auth
+import ccc
 import pdf_export
 import backup as backup_helper
 
@@ -160,6 +161,7 @@ def init_db():
                 expires_at INTEGER NOT NULL
             );
         """)
+        conn.executescript(ccc.SCHEMA_SQL)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
             "ALTER TABLE residents ADD COLUMN interests TEXT",
@@ -167,7 +169,7 @@ def init_db():
             "ALTER TABLE notes ADD COLUMN source TEXT",
             "ALTER TABLE residents ADD COLUMN is_prelim INTEGER DEFAULT 0",
             "ALTER TABLE residents ADD COLUMN prelim_specialty TEXT",
-        ]:
+        ] + ccc.COLUMN_MIGRATIONS + ccc.POST_MIGRATION_SQL:
             try:
                 conn.execute(col_sql)
             except Exception:
@@ -261,7 +263,9 @@ app = FastAPI(title="AUC — Assessments Under Curve", version="1.0.0")
 # omitting it means other websites' scripts cannot call this API.
 
 auth.init_auth(db_connection)
+ccc.init_ccc(db_connection)
 app.include_router(auth.router)
+app.include_router(ccc.router)
 
 
 @app.middleware("http")

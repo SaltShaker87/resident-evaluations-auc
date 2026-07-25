@@ -11,6 +11,7 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; a section whose quotes don't check out is withheld rather than shown (see "How AI Summaries Work" below)
 - **Edit and approve** — review each section, adjust the narrative or level, and save the final version
 - **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
+- **Capture CCC meetings for study** — start a meeting and a slide-over drawer records what the room recalled unprompted, what you had to surface, and what it changed, with de-identified CSV exports (see "CCC Meeting Capture" below)
 - **Password protected** — a single shared password guards all resident data (see "Logging In" below)
 
 ## Requirements
@@ -125,6 +126,24 @@ To point *only* the summary generator at a different model, add
 setting is `SUMMARY_MODEL` at the top of `backend/summary_builder.py`, along with the
 request timeout (600 seconds per sub-competency) and context/temperature options.
 
+## CCC Meeting Capture
+
+For measuring what a committee's spontaneous recall misses. Press **Start CCC** in the
+header and every resident page you open gains a slide-over drawer (`Ctrl+Shift+L`) where you
+log, in order: whether the room remembered last cycle's action items unprompted, what the
+room produced before you spoke, what you contributed and what visibly changed, and what was
+agreed. Everything autosaves; if the backend goes away mid-meeting the writes queue in the
+browser and retry, so nothing typed is lost.
+
+When no meeting is running, the app looks and behaves exactly as it does without this
+feature — no banner, no drawer, nothing extra on the resident page.
+
+The **Study Data** page downloads three CSVs covering all meetings to date. Residents appear
+only as study codes (`R001`, `R002`, …) — never a name, never an internal id — and free-text
+answers are left out of the files unless you explicitly turn them on.
+
+Full detail, including every table and every CSV column, is in **`CCC.md`**.
+
 ## Exporting & Backing Up Your Data
 
 All your data lives in one folder: `auc/data/` (`auc.db` plus `photos/`).
@@ -148,9 +167,12 @@ auc/
 ├── README.md         ← you are here
 ├── SECURITY.md       ← record of security measures + password recovery
 ├── BACKUPS.md        ← exporting PDFs + backup/restore + OneDrive setup
+├── CCC.md            ← CCC meeting capture: tables + every CSV export column
 ├── backend/
 │   ├── app.py        ← the Python server
 │   ├── auth.py       ← password & login handling
+│   ├── ccc.py        ← CCC meeting capture: schema + /api/ccc endpoints
+│   ├── ccc_export.py ← CCC study exports (de-identified CSV/JSON)
 │   ├── summary_builder.py ← AI summaries: one call per sub-competency + quote checking
 │   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies
 │   ├── pdf_export.py ← builds summary PDFs

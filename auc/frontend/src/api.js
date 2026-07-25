@@ -5,7 +5,7 @@
 
 const BASE = '/api';
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
@@ -16,7 +16,11 @@ async function request(path, options = {}) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new Error(err.detail || `Request failed: ${res.status}`);
+    const error = new Error(err.detail || `Request failed: ${res.status}`);
+    // The CCC offline queue needs this to tell a permanent 4xx (drop the write) from
+    // a network failure or 5xx (keep retrying). A thrown network error has no status.
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }
@@ -213,3 +217,47 @@ export const downloadBackup = () => downloadFile('/backup', 'auc-backup.zip');
 // Export an approved summary as a PDF
 export const exportSummaryPdf = (residentId, summaryId) =>
   downloadFile(`/residents/${residentId}/summaries/${summaryId}/pdf`, 'summary.pdf');
+
+// ---------------------------------------------------------------------------
+// CCC meeting capture
+// ---------------------------------------------------------------------------
+// Reads and the few writes that must be awaited live here. Everything the drawer
+// autosaves goes through src/ccc/cccQueue.js instead, so a dead backend mid-meeting
+// never loses what was typed.
+
+export const getActiveCccSession = () => request('/ccc/sessions/active');
+
+export const getCccSessions = () => request('/ccc/sessions');
+
+export const startCccSession = (meetingDate, cycleLabel) =>
+  request('/ccc/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ meeting_date: meetingDate, cycle_label: cycleLabel }),
+  });
+
+export const closeCccSession = (sessionId) =>
+  request(`/ccc/sessions/${sessionId}/close`, { method: 'POST' });
+
+// Get-or-create: returns the canonical row, which may already exist under another id.
+export const openCccResidentLog = (sessionId, residentId, id = null) =>
+  request('/ccc/resident-logs', {
+    method: 'POST',
+    body: JSON.stringify({ id, session_id: sessionId, resident_id: residentId }),
+  });
+
+export const getCccActionItems = (residentId, { status = null, sessionId = null } = {}) => {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (sessionId) params.set('session_id', sessionId);
+  const qs = params.toString();
+  return request(`/ccc/residents/${residentId}/action-items${qs ? `?${qs}` : ''}`);
+};
+
+export const getCccStats = () => request('/ccc/stats');
+
+// Study data exports. include_text=true puts free-text answers in the file — see CCC.md.
+export const downloadCccCsv = (which, includeText = false) =>
+  downloadFile(
+    `/ccc/export/${which}.csv?include_text=${includeText ? 'true' : 'false'}`,
+    `ccc-${which}.csv`,
+  );
