@@ -24,7 +24,9 @@ Before running setup, make sure you have:
 3. **Node.js 18 or newer** — check by typing: `node --version`
    - If you don't have it: `sudo apt install nodejs npm`
 4. **Ollama** (optional, for AI summaries) — install from https://ollama.ai
-   - After installing, pull your model: `ollama pull qwen3:8b`
+   - After installing, pull a generation model — any will do, e.g.
+     `ollama pull qwen3:8b` — and the embedding model, whose name must
+     match exactly: `ollama pull qwen3-embedding:0.6b`
 
 ## Setup (One Time)
 
@@ -53,13 +55,23 @@ These commands are typed in your terminal:
 
 ## Changing the AI Model
 
-If you want to use a different Ollama model, edit the service file:
+Any model in `ollama list` will do. Pick one in **Settings → Default Ollama
+model**; that choice is used from then on, and the dropdown beside the
+Generate Summary button overrides it for one run. The choice lives in your
+browser, so on a new computer you re-pick it once.
 
-1. Open the file: `nano ~/.config/systemd/user/auc.service`
-2. Find the line that says `Environment=OLLAMA_MODEL=qwen3:8b`
-3. Change `qwen3:8b` to whatever model you want (e.g., `llama3:8b`)
-4. Save and close (Ctrl+X, then Y, then Enter)
-5. Restart: `systemctl --user daemon-reload && systemctl --user restart auc`
+`auc/README.md` explains the fallbacks, and the two things any replacement
+model has to do before you trust it with a summary.
+
+## Checking That Everything Works
+
+```bash
+bash auc/preflight.sh   # the machine: models, index, services, disk, fonts
+bash auc/check.sh       # the code: lint and tests
+```
+
+Both print a line per check and say what to do about failures. `preflight.sh`
+only reads, so it is safe to run at any time.
 
 ## Backing Up Your Data
 
@@ -67,8 +79,22 @@ All your data lives in one folder: `auc/data/`
 
 - `auc.db` — the database with all residents, notes, follow-ups, and summaries
 - `photos/` — uploaded resident photos
+- `logs/summary_validation.log` — what the AI claimed vs. what was kept
 
-To back up, just copy the `data` folder somewhere safe.
+The database is **not** in git, so a fresh clone starts empty and nothing in
+the repository will ever remind you the database exists. Your backup is the
+only thing protecting it.
+
+Settings → **Download Full Backup** makes a consistent copy safely even while
+the app is running, and a nightly backup runs on a timer — point
+`AUC_BACKUP_DIR` at a cloud-synced folder so it lands off this machine. See
+`auc/BACKUPS.md`.
+
+Note the validation log is **not** in the backup zip. For a QI study that log
+is research provenance, so copy it deliberately.
+
+A backup you have never restored is a hope, not a backup. Unzip one and open
+`auc.db` from it at least once.
 
 ## File Structure
 
@@ -76,10 +102,15 @@ To back up, just copy the `data` folder somewhere safe.
 auc/
 ├── setup.sh          ← run this once to set everything up
 ├── run.sh            ← created by setup, starts the app
-├── README.md         ← you are here
+├── preflight.sh      ← is this MACHINE healthy?
+├── check.sh          ← is this CODE healthy?
+├── .env.example      ← every environment variable, with a comment each
+├── README.md         ← the fuller manual
 ├── backend/
 │   ├── app.py        ← the Python server
+│   ├── config.py     ← every environment variable is read here
 │   ├── requirements.txt
+│   ├── tests/        ← run with check.sh
 │   └── venv/         ← created by setup
 ├── frontend/
 │   ├── src/          ← the user interface code

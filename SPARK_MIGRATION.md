@@ -5,9 +5,18 @@ arrives. Read Section 1 once before then. Work through Section 4 on the day.
 Keep Section 5 open in another tab.
 
 **The companion document** — [`SPARK_REPO_CHANGES.md`](SPARK_REPO_CHANGES.md) —
-lists the changes the code itself needs. Several of those can be done *now*,
-weeks before the hardware shows up, and several of them make arrival day
-considerably shorter. Read it after this one.
+lists the changes the code itself needs. **Items 1–10 of it are now built**, so
+several checks below are shorter than they were: two scripts now do most of the
+work.
+
+| | |
+|---|---|
+| `bash auc/capture-environment.sh` | On the **old** machine, now: writes down how it is configured (most of Section 3) |
+| `bash auc/preflight.sh` | On the **new** machine: every environmental check below, in one command |
+| `bash auc/check.sh` | On either: lint and tests, so "does the code work on ARM" takes ten seconds |
+
+The individual checks are kept below anyway — when preflight says a line
+failed, this is where you find out what it means.
 
 **Target machine**
 
@@ -180,7 +189,7 @@ is plain files that any machine can serve.
 | DejaVu fonts | Gives the PDF export proper quote marks and dashes. | System package | Known-fine | No | Without it, PDFs still generate — the code falls back to a basic font and converts fancy characters to plain ones. Cosmetic only. `sudo apt install fonts-dejavu-core` fixes it. |
 | `systemd` user services | Starts the app automatically and runs the nightly backup. | System | Known-fine | No | See Section 5 — there is a well-known gotcha on headless machines. |
 | Tailscale | Lets you reach the machine from elsewhere. | System program | Known-fine — ARM Linux builds are standard | No | See Section 5 for the hospital-wifi specifics. |
-| Google Fonts (`fonts.googleapis.com`) | The web page fetches two typefaces from the internet **every time it loads**. | External web service | N/A | No | If the hospital network blocks it, pages render in a fallback typeface and may pause briefly while loading. The change plan proposes bundling the fonts locally. |
+| ~~Google Fonts~~ | **No longer applies.** The two typefaces are now bundled in the repository and served by the app, so a page load makes no outbound request at all. | — | N/A | No | Nothing to do. Verified with every non-local request blocked. |
 
 ---
 
@@ -359,14 +368,23 @@ given. Tick as you go.
 
 ## Phase 0 — Before the machine arrives (do this now)
 
-- [ ] **Answer Section 3.** All 33 blanks, while the old machine is in front of you.
+- [ ] **Capture the old machine's configuration.** `bash auc/capture-environment.sh`
+      *Observable:* a file appears in your home directory answering roughly 25 of Section 3's
+      33 questions, with the rest left as blanks. It also captures the **Modelfile of every
+      installed model** — for `clinical-reasoning:latest` that is the only written record of
+      how it was made, so copy it somewhere that is not this machine.
+- [ ] **Answer the blanks it leaves.** The ones only you know: the hospital network, where the
+      `.gguf` came from, when you last restored a backup.
 - [ ] **Take a full backup and verify it opens.** Settings → Download Full Backup. Then actually unzip it and confirm `auc.db` and `photos/` are inside.
       *Observable:* `unzip -l auc-backup-*.zip` lists `auc.db` and photo files.
 - [ ] **Prove the backup restores.** On the old machine, copy `auc.db` from the zip to a scratch folder and open it: `sqlite3 /tmp/check.db "select count(*) from residents"`.
       *Observable:* it prints a number matching your resident count. A backup you have never restored is a hope, not a backup.
 - [ ] **Record the exact model names** you are using: `ollama list > ~/ollama-inventory.txt`.
 - [ ] **Copy the Modelfile for your fine-tune somewhere safe**, if you still have it.
-- [ ] **Do the "can be done now" items** in [`SPARK_REPO_CHANGES.md`](SPARK_REPO_CHANGES.md). They shorten this day considerably.
+- [ ] ~~**Do the "can be done now" items**~~ — done. Items 1–10 of
+      [`SPARK_REPO_CHANGES.md`](SPARK_REPO_CHANGES.md) are built. Pull them onto the old
+      machine and run `bash auc/check.sh` and `bash auc/preflight.sh` there **first**, so you
+      arrive knowing what healthy looks like.
 - [ ] **Find out about the hospital network** before you need it. Ask IT: does a new device need registering? Is there a sign-in page? Are devices on the wifi allowed to talk to each other?
 
 ---
@@ -479,6 +497,13 @@ touching the application.
       *Observable:* the file exists.
 - [ ] **Install the PDF fonts.** `sudo apt install fonts-dejavu-core`
       *Observable:* `ls /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` finds the file.
+      (The *web* fonts are now bundled in the repo — nothing to install, and no outbound
+      request when a page loads.)
+- [ ] **Run the code checks.** `bash auc/check.sh`
+      *Observable:* ruff, pytest, shellcheck, ESLint and the frontend build all pass. First
+      time on a machine this needs
+      `auc/backend/venv/bin/pip install -r auc/backend/requirements-dev.txt`.
+      **This is the fastest answer to "does the code work on ARM".**
 
 ---
 
@@ -507,7 +532,16 @@ touching the application.
 
 ## Phase I — Verification
 
-Do not consider the migration done until every one of these passes.
+**Start with `bash auc/preflight.sh`.** It covers the architecture, Python, the
+virtual environment (checking every package *imports*, not just installs — which
+is exactly where an ARM problem shows up), the built interface, the bundled
+fonts, Ollama and its models, the ACGME index and its embedding-model stamp, the
+database and its password, photos versus residents claiming one, DejaVu, the
+services, lingering, and whether the app answers on its port. Every failure line
+tells you what to do about it.
+
+What preflight cannot check is whether the app is any *good*. That is the rest of
+this list, and none of it can be skipped.
 
 - [ ] **Resident list is complete.** Open the main page.
       *Observable:* all your residents appear, at the right PGY levels, with their photos.
