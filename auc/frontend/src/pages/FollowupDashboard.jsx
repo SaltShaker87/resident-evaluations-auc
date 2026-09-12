@@ -1,13 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, AlertCircle, AlertTriangle, Clock } from 'lucide-react';
 import { getAllFollowups, resolveFollowup } from '../api';
-
-const priorityIcon = {
-  urgent: <AlertCircle size={14} style={{ color: 'var(--red-500)' }} />,
-  important: <AlertTriangle size={14} style={{ color: 'var(--amber-500)' }} />,
-  routine: <Clock size={14} style={{ color: 'var(--slate-400)' }} />,
-};
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -20,7 +14,7 @@ export default function FollowupDashboard({ showToast }) {
   const [followups, setFollowups] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getAllFollowups(false);
@@ -29,9 +23,9 @@ export default function FollowupDashboard({ showToast }) {
       showToast('Failed to load follow-ups');
     }
     setLoading(false);
-  };
+  }, [showToast]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const handleResolve = async (id) => {
     await resolveFollowup(id);

@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------------
+# The ACGME index layer.
+#
+# Installed as a second step by setup.sh. If this install fails, the setup
+# script warns and carries on: residents, notes, follow-ups, the CCC study
+# drawer and PDF export of already-approved summaries all keep working.
+#
+# What you lose without it is summary generation. Since the study-branch
+# merge the generator treats a missing index as a hard error rather than
+# falling back to an ungrounded prompt, so there is no degraded summary —
+# there are no summaries. Fix this before a committee meeting depends on it.
+#
+# chromadb is the only package in the project with compiled components (a
+# Rust core, plus onnxruntime behind it). An ARM64 Linux wheel is published,
+# so this is expected to install cleanly on the Spark. onnxruntime's ARM
+# wheels need Python 3.10 or newer.
+# ---------------------------------------------------------------------------
+chromadb==1.5.9

@@ -22,16 +22,17 @@ to the legacy (ungrounded) prompt with a clear message instead of crashing.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import httpx
 
-try:
-    from config import OLLAMA_URL  # type: ignore
-except Exception:  # pragma: no cover - config should always be importable in app
-    import os
+# config.py sits next to this file. Import it for real rather than keeping a
+# fallback default for EMBED_MODEL here: two defaults is how an index ends up
+# built with one model and searched with another.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+from config import EMBED_MODEL, OLLAMA_URL  # noqa: E402
 
 # --- Paths / constants -----------------------------------------------------
 RAG_DIR = Path(__file__).resolve().parent.parent / "rag"
@@ -39,7 +40,11 @@ ONTOLOGY_FILE = RAG_DIR / "ontology" / "acgme_ontology.json"
 CHROMA_DIR = RAG_DIR / "chroma_db"
 
 COLLECTION_NAME = "acgme_guidelines"
-EMBED_MODEL = "qwen3-embedding:0.6b"
+
+# Key under which build_index.py stamps the embedding model into the collection
+# metadata, so a build/search mismatch can be detected rather than silently
+# returning arbitrary results.
+EMBED_MODEL_KEY = "embed_model"
 MILESTONES_SOURCE = "acgme_im_milestones.md"
 SUPPLEMENT_SOURCE = "acgme_im_supplemental_guide.md"
 
@@ -64,7 +69,7 @@ def load_ontology():
     try:
         return json.loads(ONTOLOGY_FILE.read_text(encoding="utf-8"))
     except Exception as e:
-        raise RagUnavailable(f"Could not read ACGME ontology: {e}")
+        raise RagUnavailable(f"Could not read ACGME ontology: {e}") from e
 
 
 def open_collection():
@@ -75,8 +80,8 @@ def open_collection():
         )
     try:
         import chromadb
-    except ImportError:
-        raise RagUnavailable("chromadb is not installed in this environment.")
+    except ImportError as e:
+        raise RagUnavailable("chromadb is not installed in this environment.") from e
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         return client.get_collection(COLLECTION_NAME)
@@ -84,7 +89,7 @@ def open_collection():
         raise RagUnavailable(
             f"ACGME collection '{COLLECTION_NAME}' is not available: {e}. "
             "Run 'python auc/rag/build_index.py' to (re)build it."
-        )
+        ) from e
 
 
 def _embed(text):
@@ -97,6 +102,101 @@ def _embed(text):
         r.raise_for_status()
         return r.json()["embeddings"][0]
 
+
+# --- Health ----------------------------------------------------------------
+def index_status():
+    """Report whether the ACGME index is usable, without raising.
+
+    Exists so the index can be checked *before* a summary is attempted. Since
+    the study-branch merge a broken index is a visible error rather than a
+    silent downgrade, but you still only discover it by trying to generate —
+    which, in a committee meeting, is the worst possible moment.
+
+    Returns a dict with:
+      level   "ok" | "warning" | "error"
+      message a sentence saying what to do about it
+      plus collection/count/expected_count/configured_model/index_model
+      for anything that wants the detail.
+    """
+    result = {
+        "level": "error",
+        "message": "",
+        "collection": COLLECTION_NAME,
+        "count": None,
+        "expected_count": None,
+        "configured_model": EMBED_MODEL,
+        "index_model": None,
+    }
+
+    try:
+        ontology = load_ontology()
+        collection = open_collection()
+    except RagUnavailable as e:
+        result["message"] = str(e)
+        return result
+    except Exception as e:  # defensive: a status check must never take the app down
+        result["message"] = f"ACGME index could not be checked: {e}"
+        return result
+
+    # Two chunks per sub-competency: the milestones descriptors and the
+    # supplemental-guide examples. Derived from the ontology rather than
+    # hard-coded, so editing the ontology does not make this lie.
+    expected = len(ontology.get("subcompetencies", [])) * 2
+    result["expected_count"] = expected
+
+    try:
+        count = collection.count()
+        stamped = (collection.metadata or {}).get(EMBED_MODEL_KEY)
+    except Exception as e:
+        result["message"] = f"ACGME collection '{COLLECTION_NAME}' could not be read: {e}"
+        return result
+
+    result["count"] = count
+    result["index_model"] = stamped
+
+    if count == 0:
+        result["message"] = (
+            "The ACGME index is empty. Rebuild it with: "
+            "python auc/rag/build_index.py"
+        )
+        return result
+
+    # A mismatch is the one failure that produces no error of its own: retrieval
+    # keeps working and returns arbitrary results. Treat it as fatal.
+    if stamped and stamped != EMBED_MODEL:
+        result["message"] = (
+            f"This index was built with '{stamped}' but the app is configured to "
+            f"search it with '{EMBED_MODEL}'. Results would be meaningless. "
+            f"Either set AUC_EMBED_MODEL back to '{stamped}', or rebuild the "
+            f"index with: python auc/rag/build_index.py"
+        )
+        return result
+
+    if stamped is None:
+        result["level"] = "warning"
+        result["message"] = (
+            f"The index works, but it predates embedding-model stamping, so a "
+            f"mismatch cannot be detected. Rebuild it once with "
+            f"'python auc/rag/build_index.py' to record that it was built with "
+            f"'{EMBED_MODEL}'."
+        )
+        return result
+
+    if count != expected:
+        result["level"] = "warning"
+        result["message"] = (
+            f"The index holds {count} entries but {expected} were expected "
+            f"({expected // 2} sub-competencies across 2 source documents). "
+            f"Some reference material may not have been read. Rebuild with: "
+            f"python auc/rag/build_index.py"
+        )
+        return result
+
+    result["level"] = "ok"
+    result["message"] = (
+        f"ACGME index ready — {count} entries, embedded with {EMBED_MODEL}."
+    )
+    return result
 
 # --- Routing ---------------------------------------------------------------
 def route_comments(comments, ontology, collection):
@@ -150,7 +250,7 @@ def fetch_chunks(collection, sub_id):
     metas = got.get("metadatas") or []
 
     milestones = supplemental = None
-    for meta, doc in zip(metas, docs):
+    for meta, doc in zip(metas, docs, strict=False):
         if meta.get("source") == MILESTONES_SOURCE:
             milestones = doc
         elif meta.get("source") == SUPPLEMENT_SOURCE:
@@ -196,7 +296,6 @@ def compose_prompt(resident_label, comments):
         raise RagUnavailable("No comment text was available to route to ACGME competencies.")
 
     domains = ontology["domains"]
-    sub_by_id = {s["id"]: s for s in ontology["subcompetencies"]}
 
     sections = []
     routing_info = {}  # sub_id -> count, for server-side logging

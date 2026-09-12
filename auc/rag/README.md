@@ -28,7 +28,9 @@ to any third-party service. The only network calls are to the local Ollama serve
 - **`build_index.py`** — Splits each Markdown file into one chunk per
   sub-competency (h3 headings), tags each chunk with the canonical id/name/domain
   from `ontology/acgme_ontology.json`, embeds it with Ollama's
-  `qwen3-embedding:0.6b`, and stores everything in a ChromaDB `PersistentClient`
+  the configured embedding model (`config.EMBED_MODEL`, `AUC_EMBED_MODEL`,
+  default `qwen3-embedding:0.6b`), stamps that model name into the collection's
+  metadata, and stores everything in a ChromaDB `PersistentClient`
   at `chroma_db/` (collection `acgme_guidelines`). Idempotent — it deletes and
   recreates the collection on every run. Expect ~42 chunks (21 sub-competencies ×
   2 source files).
@@ -91,10 +93,14 @@ From the repo root, using the backend's Python environment:
 ```bash
 # one-time: pull the embedding model and install the dependency
 ollama pull qwen3-embedding:0.6b
-auc/backend/venv/bin/pip install chromadb   # already pinned in requirements.txt
+auc/backend/venv/bin/pip install -r auc/backend/requirements-rag.txt   # chromadb, pinned
 
 # (re)build the index after editing the Markdown files
 auc/backend/venv/bin/python auc/rag/build_index.py
+
+# then restart the app — it holds the index it opened at startup, so until you
+# restart it keeps searching (and reporting on) the previous one
+systemctl --user restart auc
 
 # sanity-check retrieval
 auc/backend/venv/bin/python auc/rag/test_query.py "missed a posterior circulation stroke"

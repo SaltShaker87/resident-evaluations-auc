@@ -29,10 +29,9 @@ import uuid
 from datetime import date
 from typing import List, Literal, Optional
 
+import ccc_export
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-
-import ccc_export
 
 router = APIRouter(prefix="/api/ccc", tags=["ccc"])
 

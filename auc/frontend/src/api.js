@@ -151,6 +151,9 @@ export const deleteSummary = (id) =>
 // Ollama
 export const getOllamaModels = () => request('/ollama/models');
 
+// ACGME index health — reported before a summary is attempted, not during one.
+export const getRagStatus = () => request('/rag/status');
+
 // MedHub Import
 export const parseMedhubCsv = async (file) => {
   const formData = new FormData();

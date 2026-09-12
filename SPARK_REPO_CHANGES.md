@@ -9,9 +9,12 @@ needs so it runs well on the Spark.
 > item 1 outright** and changed the reasoning behind items 2 and 4. Those three
 > entries are rewritten below; the rest stand as originally written.
 
-**Everything still marked as a proposal is unbuilt.** Items 2–13 are a plan for
-you to approve, schedule, or ignore one at a time. Item 1 is now marked done
-because the merge did it.
+> **Revised again: items 1–10 are now built.** Everything in the DO NOW group
+> has been implemented and verified on a machine, plus a test suite, linting,
+> and two scripts the original plan did not call for — `check.sh` and
+> `capture-environment.sh`. Each entry below records what was actually done
+> and where it differed from the proposal. **Items 11–13 remain open**; they
+> need the Spark in front of you.
 
 ## How this is ordered
 
@@ -23,8 +26,8 @@ turn a silent failure into a visible one.
 
 **Items 11–13 need the Spark in front of you** and are marked **ON ARRIVAL**.
 
-Within the DO NOW group, items are ordered by value-per-effort. **Item 1 is
-already done**, so if you only do three, do **2, 3 and 5**.
+Within the DO NOW group, items were ordered by value-per-effort. All of them
+are now done, so that ordering is history.
 
 ### Reading the entries
 
@@ -137,6 +140,16 @@ you are confident. Especially if you are confident.
 
 ---
 
+## 2. ~~Split the dependencies so the core app installs without the index layer~~ — ✅ DONE
+
+**Built as proposed.** `chromadb` moved to `auc/backend/requirements-rag.txt`;
+`setup.sh` installs the core first and the index layer second, and a failure of
+the second is a warning naming the lost feature rather than an aborted install.
+`aiofiles` dropped and `anyio` added in the same commit (item 9).
+
+<details>
+<summary>The original proposal</summary>
+
 ## 2. Split the dependencies so the core app installs without the index layer
 
 **DO NOW**
@@ -186,7 +199,30 @@ tolerated and reported), `auc/rag/README.md` (update the install line).
 instead of one. Re-running `setup.sh` on the old machine is a no-op for anything
 already installed.
 
+
+</details>
+
 ---
+
+## 3. ~~Add a preflight script that checks everything in one command~~ — ✅ DONE
+
+**Built, with one deliberate change.** `auc/preflight.sh` checks everything the
+entry listed, but **does not check for a named generation model**. The browser
+sends the model picked in Settings with every generation request, so any model
+in `ollama list` works — preflight lists what is installed and fails only if
+there is nothing at all. The *embedding* model is still checked by exact name,
+because that one must match the index.
+
+It calls the app's own `index_status()` rather than reimplementing the check, so
+preflight and Settings can never disagree. It reads the database with Python's
+`sqlite3` rather than the `sqlite3` command, which is not installed by default
+on a fresh machine.
+
+Verified by breaking things one at a time: renaming `rag/chroma_db` makes that
+check alone fail with the rebuild command.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 3. Add a preflight script that checks everything in one command
 
@@ -235,7 +271,34 @@ with a message explaining what to do.
 
 **Risk to the current machine. None.** It only reads; it changes nothing.
 
+
+</details>
+
 ---
+
+## 4. ~~Surface index health *before* a generation is attempted~~ — ✅ DONE
+
+**Built as proposed.** `GET /api/rag/status`, backed by
+`rag_retrieval.index_status()`, shown in Settings beside the Ollama line.
+
+Five states, all exercised by tests: ready; index missing; index empty; index
+incomplete; and the embedding-model mismatch, reported as fatal because it is
+the one failure that produces no error of its own.
+
+One state the plan did not anticipate: an index built *before* the stamping in
+item 5 carries no model name. That reports as a **warning saying to rebuild
+once**, rather than as a mismatch — which is the state your current Ubuntu
+machine's index is in, so expect to see it.
+
+The expected entry count is derived from the ontology rather than hard-coded at
+42, so editing the ontology cannot make the status line lie.
+
+Two UI defects turned up while looking at the real page and were fixed: the
+"Ollama not reachable" message overran the label beside it, and the index
+message wrapped mid-model-name.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 4. Surface index health *before* a generation is attempted
 
@@ -287,7 +350,30 @@ any more — the merge already records per-section status.
 one read-only display. No existing path changes behaviour. Worth running on the
 old machine for a week first, so you arrive knowing what healthy looks like.
 
+
+</details>
+
 ---
+
+## 5. ~~Make the embedding model configurable, and stamp it into the index~~ — ✅ DONE
+
+**Built, going slightly further than proposed.** `config.EMBED_MODEL`
+(`AUC_EMBED_MODEL`, default unchanged), read by `build_index.py`,
+`rag_retrieval.py` and `test_query.py`. The name is stamped into the Chroma
+collection's own metadata alongside `hnsw:space`.
+
+The plan's "done when" allowed a fallback default in each file. That was
+dropped: a second default per file is exactly how the two drift apart, so each
+file puts `backend/` on the path and imports config for real. `grep -rn
+"qwen3-embedding" auc/ --include=*.py` now returns `config.py` and nothing else.
+
+**Something the plan missed, found while testing:** a running app holds the
+index it opened at startup, so rebuilding the index while the app is up leaves
+it searching — and reporting on — the old one. `build_index.py` now says to
+restart, and `rag/README.md` records it.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 5. Make the embedding model configurable, and stamp it into the index
 
@@ -330,7 +416,31 @@ what it is about to search with what the index was built with, and say so.
 **Risk to the current machine. Low**, provided the default stays
 `qwen3-embedding:0.6b`. Behaviour is unchanged unless the variable is set.
 
+
+</details>
+
 ---
+
+## 6. ~~Bundle the web fonts instead of fetching them from Google~~ — ✅ DONE
+
+**Built as proposed.** Both families are SIL Open Font License 1.1 — confirmed
+against the upstream projects, not assumed — and the full licence text ships in
+`frontend/public/fonts/LICENSE.md`.
+
+Google's per-weight URLs turn out to be byte-identical: these are variable
+fonts. So this ships one file per family/style/subset with a weight range
+rather than four identical copies — 8 files, 460 KB, latin and latin-ext.
+
+Verified in a browser with every non-local request aborted: the page renders
+with no external request attempted at all, and measured glyph widths differ
+from the Georgia and system-sans fallbacks, so the real faces are in use.
+
+Worth knowing: in a network that blackholes rather than refuses the request,
+the blocked font fetch also stalls the page's own load event. That was visible
+in this container.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 6. Bundle the web fonts instead of fetching them from Google
 
@@ -367,7 +477,25 @@ new font files under `auc/frontend/public/fonts/`, `auc/frontend/src/styles.css`
 Check the fonts' licences permit redistribution — both of these are open
 licensed, but confirm rather than assume.
 
+
+</details>
+
 ---
+
+## 7. ~~Make the address and port configurable~~ — ✅ DONE
+
+**Built, resolved slightly differently.** `config.HOST` / `config.PORT`
+(`AUC_HOST` / `AUC_PORT`), defaults unchanged. Rather than repeating the
+defaults in the shell scripts, `run.sh` asks `config.py`, and the systemd unit
+now runs `run.sh` — so the address is resolved the same way whether you start
+it by hand or through systemd, and there is one place to change it.
+
+Verified: `AUC_PORT=3001` answers on 3001; nothing set still answers on 3000;
+and `AUC_HOST=127.0.0.1` answers on loopback while refusing on the machine's
+network address.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 7. Make the address and port configurable
 
@@ -404,7 +532,32 @@ the service definition), `auc/backend/config.py`, `auc/README.md`.
 Re-running `setup.sh` rewrites the service file, so restart the service
 afterwards and confirm it still answers.
 
+
+</details>
+
 ---
+
+## 8. ~~Make `setup.sh` safer to re-run and clearer when it fails~~ — ✅ DONE
+
+**Built, and the service-file handling goes further than "warn clearly".**
+Rather than warning that your edits will be replaced, `install_unit` carries
+every `Environment=` line forward — your value beats the generated default, and
+variables you added that the script does not know about are kept too — while
+regenerating the paths, which have to change on a new machine. The previous
+file is kept alongside and the script prints what it carried across. Verified
+with a hand-edited `OLLAMA_MODEL` and an added `AUC_SUMMARY_MODEL`.
+
+Also: Python version gate at step 1 (verified against a stub reporting 3.9),
+Node version gate, disk space check, `loginctl enable-linger`, `npm ci` with
+errors no longer discarded, and a clean exit with instructions on a machine
+that has no systemd user session — where it previously aborted as if the
+install had broken.
+
+One more: the service is now **restarted** rather than started, so re-running
+picks up new code instead of leaving the old process running.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 8. Make `setup.sh` safer to re-run and clearer when it fails
 
@@ -447,7 +600,17 @@ working deployment's startup path.** Re-run it on the old machine, then confirm
 with `systemctl --user status auc` and by loading the app. Do it on a day when
 you are not about to need the app, not the morning of a committee meeting.
 
+
+</details>
+
 ---
+
+## 9. ~~Remove the unused dependency~~ — ✅ DONE
+
+Done in the same commit as item 2. `aiofiles` dropped, `anyio` added.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 9. Remove the unused dependency
 
@@ -480,7 +643,27 @@ be certain, remove it from a fresh environment rather than uninstalling it from
 the running one, and confirm photo upload and backup download still work, since
 those are the file-handling paths where a hidden dependency would surface.
 
+
+</details>
+
 ---
+
+## 10. ~~Document the environment variables in one place~~ — ✅ DONE
+
+**Built, and the conclusion about the model changed.** `auc/.env.example`
+documents all eleven variables, and a test fails if the code reads one that the
+file does not mention.
+
+The plan treated the `clinical-reasoning:latest` / `qwen3:8b` disagreement as
+something to settle on a single value. Reading the code, that was the wrong
+diagnosis: the model is chosen **per generation**, sent by the browser from
+Settings, with `AUC_SUMMARY_MODEL` and then `OLLAMA_MODEL` as fallbacks. Any
+model in `ollama list` works. So what needed writing down was the precedence
+chain, not a winner — and that the choice lives in the browser, so it does not
+travel with the machine.
+
+<details>
+<summary>The original proposal</summary>
 
 ## 10. Document the environment variables in one place
 
@@ -521,6 +704,9 @@ default or comment in `auc/backend/config.py`.
 could configure the app.
 
 **Risk to the current machine. None.** Documentation.
+
+
+</details>
 
 ---
 
@@ -652,27 +838,40 @@ finish proving the migration first and tidy pins afterwards.
 
 # Summary table
 
-| # | Change | When | Effort | Risk to old machine |
-|---|---|---|---|---|
-| 1 | ~~Stop tracking the database in git~~ | ✅ **Done** (`f0c3b5a`) | — | — |
-| 2 | Split out the index dependency | **Now** | Small | None |
-| 3 | Preflight check script | **Now** | Medium | None |
-| 4 | Surface index health before generating | **Now** | Small (reduced) | Very low |
-| 5 | Configurable embedding model | **Now** | Small | Low |
-| 6 | Bundle the web fonts | **Now** | Small | None |
-| 7 | Configurable host and port | **Now** | Small | Low |
-| 8 | Safer `setup.sh` | **Now** | Medium | Low — touches startup |
-| 9 | Fix `requirements.txt` (drop `aiofiles`, add `anyio`) | **Now** | Trivial | None |
-| 10 | Document environment variables | **Now** | Small | None |
-| 11 | HTTPS via Tailscale, bind to localhost | On arrival | Small | None (Spark only) |
-| 12 | Settle model configuration | On arrival | Small | Low |
-| 13 | Loosen version pins | On arrival, if forced | Varies | Medium |
+| # | Change | Status |
+|---|---|---|
+| 1 | Stop tracking the database in git | ✅ Done (`f0c3b5a`, by the study-branch merge) |
+| 2 | Split out the index dependency | ✅ Done |
+| 3 | Preflight check script | ✅ Done — `auc/preflight.sh` |
+| 4 | Surface index health before generating | ✅ Done — `GET /api/rag/status`, shown in Settings |
+| 5 | Configurable embedding model | ✅ Done — stamped into the index |
+| 6 | Bundle the web fonts | ✅ Done — 8 files, 460 KB, SIL OFL |
+| 7 | Configurable host and port | ✅ Done — `AUC_HOST` / `AUC_PORT` |
+| 8 | Safer `setup.sh` | ✅ Done — your unit-file edits now survive a re-run |
+| 9 | Fix `requirements.txt` | ✅ Done |
+| 10 | Document environment variables | ✅ Done — `auc/.env.example` |
+| 11 | HTTPS via Tailscale, bind to localhost | **Open** — on arrival. Code side done: set `AUC_HOST=127.0.0.1` |
+| 12 | Settle model configuration | **Open** — on arrival, and see the note below |
+| 13 | Loosen version pins | **Open** — only if something forces it |
 
-**If you do only three:** **2** (a failure in the index layer should cost one
-feature, not the whole install — and it now costs the whole summary feature),
-**3** (the preflight script, which pays for itself on arrival day), and **5**
-(the embedding-model mismatch is the one silent failure that survived the
-merge).
+Not in the original plan, added because the migration made the case for them:
+
+| | What | Why |
+|---|---|---|
+| — | `auc/check.sh` | One command for ruff, pytest, shellcheck, ESLint and the build |
+| — | `auc/backend/tests/` | 29 tests, no Ollama needed. Turns "does the code work on ARM" into ten seconds |
+| — | ruff + ESLint | Both clean. ESLint immediately caught an import I removed that was still used |
+| — | `auc/capture-environment.sh` | Answers ~25 of Section 3's 33 questions, and captures your Modelfiles |
+| — | `AUC_DATA_DIR` | The data directory was hardcoded, so nothing could be tested without touching real data |
+
+**On item 12, the plan's diagnosis was wrong.** It treated "which model writes
+the summaries" as something to settle on a single value. Reading the code, the
+model is chosen per generation — sent by the browser from Settings, with
+`AUC_SUMMARY_MODEL` and then `OLLAMA_MODEL` as fallbacks — so any model in
+`ollama list` works and there is nothing to settle. What item 12 is really for
+is recording, once you have chosen a model on the Spark, that it honours
+Ollama's JSON-constrained output and quotes verbatim. Both are now written down
+in `auc/.env.example` and `auc/README.md`.
 
 ## What the merge changed in this plan
 

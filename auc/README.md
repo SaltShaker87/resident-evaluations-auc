@@ -23,7 +23,9 @@ Before running setup, make sure you have:
 3. **Node.js 18 or newer** — check by typing: `node --version`
    - If you don't have it: `sudo apt install nodejs npm`
 4. **Ollama** (optional, for AI summaries) — install from https://ollama.ai
-   - After installing, pull your model: `ollama pull qwen3:8b`
+   - After installing, pull a generation model — any will do, e.g.
+     `ollama pull qwen3:8b` — and the embedding model, whose name must
+     match exactly: `ollama pull qwen3-embedding:0.6b`
 
 ## Setup (One Time)
 
@@ -110,21 +112,81 @@ as designed, not a bug. If you see a lot of withheld sections, try a larger mode
 
 ## Changing the AI Model
 
-The quickest way is the **model dropdown** next to the Generate Summary button — it
-lists every model installed in Ollama and applies to that run only.
+Any model in `ollama list` will do. **Settings → Default Ollama model** picks
+the one used from then on, and the dropdown next to the Generate Summary
+button overrides it for a single run.
 
-To change the default for everyone, edit the service file:
+That choice is stored in your **browser**, not on the server, so it does not
+travel with the machine — on a new computer you re-pick it once.
 
-1. Open the file: `nano ~/.config/systemd/user/auc.service`
-2. Find the line that says `Environment=OLLAMA_MODEL=qwen3:8b`
-3. Change `qwen3:8b` to whatever model you want (e.g., `llama3:8b`)
-4. Save and close (Ctrl+X, then Y, then Enter)
-5. Restart: `systemctl --user daemon-reload && systemctl --user restart auc`
+Three settings decide which model writes a summary. The first one set wins:
 
-To point *only* the summary generator at a different model, add
-`Environment=AUC_SUMMARY_MODEL=your-model` to the same file. The equivalent code
-setting is `SUMMARY_MODEL` at the top of `backend/summary_builder.py`, along with the
-request timeout (600 seconds per sub-competency) and context/temperature options.
+| | Where | Scope |
+|---|---|---|
+| 1 | The model picked in Settings | Sent with every generation. Normally this is what decides it. |
+| 2 | `AUC_SUMMARY_MODEL` | Summaries only |
+| 3 | `OLLAMA_MODEL` | Everything, and the last resort |
+
+If a summary ever comes out of a model you did not expect, check them in that
+order. To change 2 or 3, edit `~/.config/systemd/user/auc.service`, add or
+change the `Environment=` line, then
+`systemctl --user daemon-reload && systemctl --user restart auc`. Re-running
+`setup.sh` preserves edits you make there.
+
+**Two things any new model must do**, because the generator depends on both:
+
+- **Honour Ollama's JSON-constrained output.** A model that answers in prose
+  instead marks every section `generation_failed`.
+- **Quote verbatim.** Every quote is checked against the comments routed to
+  that sub-competency, and a model that paraphrases has its quotes dropped.
+  Do not relax that validation to accommodate a model — it is what keeps
+  invented evidence out of a resident's record. Change the model instead.
+
+Test both on a real resident with real notes before a meeting depends on it.
+
+## Configuration
+
+Every environment variable the app reads is listed, with a comment each, in
+**`.env.example`**. Nothing loads `.env` automatically — settings reach the app
+through `Environment=` lines in `~/.config/systemd/user/auc.service`, or
+exported in the shell before `bash run.sh`.
+
+The two worth knowing about before anything goes wrong:
+
+- **`AUC_EMBED_MODEL`** is *not* interchangeable the way the generation model
+  is. It must be the model that built the ACGME index — embeddings from two
+  different models are not comparable, so searching with the wrong one returns
+  confident nonsense. The index records which model built it and Settings
+  reports a mismatch, but if you change this, rebuild the index in the same
+  breath.
+- **`AUC_HOST`** defaults to `0.0.0.0`, meaning anyone who can reach this
+  machine on the network can reach the app, over plain HTTP. Fine at home. On
+  an untrusted network set it to `127.0.0.1` and put Tailscale Serve in front
+  — see `SECURITY.md`.
+
+## Checking That Everything Works
+
+Two commands, one for the machine and one for the code:
+
+```bash
+bash auc/preflight.sh   # the machine: models, index, services, disk, fonts
+bash auc/check.sh       # the code: lint and tests, backend and frontend
+```
+
+`preflight.sh` prints a pass/fail line for every assumption the app makes and
+says what to do about the failures. It only reads, so it is safe to run at any
+time — including mid-meeting. Run it after setup on a new machine, and first
+whenever something stops working.
+
+`check.sh` runs ruff, pytest, shellcheck, ESLint and the frontend build. It
+needs the checking tools once per machine:
+
+```bash
+auc/backend/venv/bin/pip install -r auc/backend/requirements-dev.txt
+```
+
+The tests never touch real data — they point `AUC_DATA_DIR` at a scratch
+directory before importing the app, and assert that it worked.
 
 ## CCC Meeting Capture
 
@@ -164,6 +226,10 @@ Three ways to get data out, all explained in **`BACKUPS.md`**:
 auc/
 ├── setup.sh          ← run this once to set everything up
 ├── run.sh            ← created by setup, starts the app
+├── preflight.sh      ← is this MACHINE healthy? models, index, services, disk
+├── check.sh          ← is this CODE healthy? lint and tests, both halves
+├── capture-environment.sh  ← write down how this machine is configured
+├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← you are here
 ├── SECURITY.md       ← record of security measures + password recovery
 ├── BACKUPS.md        ← exporting PDFs + backup/restore + OneDrive setup
@@ -178,7 +244,11 @@ auc/
 │   ├── pdf_export.py ← builds summary PDFs
 │   ├── backup.py     ← full backup (db + photos), manual & scheduled
 │   ├── reset_password.py  ← last-resort password reset
-│   ├── requirements.txt
+│   ├── config.py     ← every environment variable is read here, and only here
+│   ├── requirements.txt      ← the core app
+│   ├── requirements-rag.txt  ← the ACGME index layer (chromadb)
+│   ├── requirements-dev.txt  ← pytest and ruff, for check.sh
+│   ├── tests/        ← run with check.sh; never touch real data
 │   └── venv/         ← created by setup
 ├── rag/              ← ACGME ontology + reference documents (see rag/README.md)
 ├── frontend/

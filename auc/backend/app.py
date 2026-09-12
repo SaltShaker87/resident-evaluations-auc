@@ -3,42 +3,46 @@ AUC — Assessments Under Curve
 Backend API server for residency feedback management.
 """
 
-import os
 import csv
 import io
-import re
 import json
+import os
+import re
 import sqlite3
-import shutil
-import uuid
 import tempfile
-from datetime import datetime, date
+import uuid
+from contextlib import asynccontextmanager, contextmanager
+from datetime import date, datetime
 from pathlib import Path
-from contextlib import contextmanager
+from typing import List, Literal, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
-from starlette.background import BackgroundTask
-from pydantic import BaseModel
-from typing import Optional, List, Literal
+import auth
+import backup as backup_helper
+import ccc
 import httpx
+import medhub_api
+import pdf_export
+import rag_retrieval
+import summary_builder
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
-import medhub_api
-import rag_retrieval
-import summary_builder
-import auth
-import ccc
-import pdf_export
-import backup as backup_helper
+from config import (
+    DATA_DIR,
+    OLLAMA_MAX_TOKENS,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+)
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+# DATA_DIR comes from config so it can be pointed elsewhere — another disk, or
+# a scratch copy for the tests, which must never open the real database.
 PHOTOS_DIR = DATA_DIR / "photos"
 DB_PATH = DATA_DIR / "auc.db"
 
@@ -256,7 +260,18 @@ class AdvancementExecute(BaseModel):
 # App setup
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="AUC — Assessments Under Curve", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Create or migrate the schema before the first request is served."""
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="AUC — Assessments Under Curve",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 # Frontend and API are served from the same origin (uvicorn in production,
 # the Vite proxy in development), so no CORS middleware is needed — and
@@ -276,11 +291,6 @@ async def require_auth(request: Request, call_next):
         if not auth.is_authenticated(request):
             return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
     return await call_next(request)
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
 
 # ---------------------------------------------------------------------------
 # Resident endpoints
@@ -481,7 +491,7 @@ def download_backup():
         backup_helper.make_backup_zip(tmp_path)
     except Exception as exc:  # noqa: BLE001
         tmp_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}") from exc
     filename = f"auc-backup-{date.today().isoformat()}.zip"
     return FileResponse(
         tmp_path,
@@ -640,6 +650,18 @@ async def get_ollama_models():
             return [m["name"] for m in r.json().get("models", [])]
     except Exception:
         return {"error": "Could not connect to Ollama. Make sure Ollama is running (run 'ollama serve')."}
+
+@app.get("/api/rag/status")
+def get_rag_status():
+    """Report whether the ACGME index is usable.
+
+    Lets Settings show index health the same way it shows Ollama health, so a
+    broken index is visible before someone tries to generate a summary in a
+    committee meeting. Never raises — a status check that can take the app down
+    is worse than no status check.
+    """
+    return rag_retrieval.index_status()
+
 
 # ---------------------------------------------------------------------------
 # AI Summary endpoints
@@ -1053,9 +1075,9 @@ def sync_medhub_api():
         conn.commit()
         return {"configured": True, **result}
     except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"MedHub API error: {exc}")
+        raise HTTPException(status_code=502, detail=f"MedHub API error: {exc}") from exc
     finally:
         conn.close()
 

@@ -29,13 +29,11 @@ import os
 import re
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 import anyio
 import httpx
-
 import rag_retrieval
-from config import OLLAMA_URL, OLLAMA_MODEL
+from config import DATA_DIR, OLLAMA_MODEL, OLLAMA_URL
 
 # ---------------------------------------------------------------------------
 # Configuration — change the model here, in one place.
@@ -59,8 +57,7 @@ MAX_QUOTES: int = 3
 # Marks a stored summary as the structured format (vs. the older markdown blobs).
 REPORT_SCHEMA: str = "auc.summary.v1"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIR = BASE_DIR / "data" / "logs"
+LOG_DIR = DATA_DIR / "logs"
 VALIDATION_LOG = LOG_DIR / "summary_validation.log"
 
 # Status values a section can carry.
@@ -258,15 +255,15 @@ def parse_model_json(raw):
 
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as first_error:
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise ValueError("no JSON object found in response")
+            raise ValueError("no JSON object found in response") from first_error
         try:
             parsed = json.loads(text[start:end + 1])
         except json.JSONDecodeError as e:
-            raise ValueError(f"invalid JSON: {e}")
+            raise ValueError(f"invalid JSON: {e}") from e
 
     if not isinstance(parsed, dict):
         raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")

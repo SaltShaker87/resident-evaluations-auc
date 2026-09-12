@@ -138,21 +138,54 @@ own user account password.
 
 ---
 
-## Still recommended before hosting on the DGX Spark (NOT yet done)
+## Still recommended before hosting on the DGX Spark
 
-These were identified in the review but intentionally left for a later round:
+These were identified in the review. Items 2 and 3 have since been done and
+are marked so; the rest are still open.
 
-1. **HTTPS.** The app currently runs over plain HTTP, so on an untrusted
-   network the password could in principle be intercepted in transit. The
-   standard fix is to put a reverse proxy (Caddy is the simplest) in front of
-   the app to provide HTTPS, and have the app listen only on `127.0.0.1`.
-2. **Start-on-boot fix.** The systemd *user* service only starts when someone
-   logs into the machine. On a headless DGX Spark run
-   `loginctl enable-linger $USER` once so the app starts at boot.
-3. **Automated backups.** Use the in-app backup button or
-   `sqlite3 data/auc.db ".backup /somewhere/safe/auc-backup.db"` on a
-   schedule, ideally to another machine or drive. (Copying photos needs a
-   separate copy of `data/photos`.)
+1. **HTTPS.** The app still runs over plain HTTP, so on an untrusted network
+   the password could in principle be intercepted in transit.
+
+   *The code side of this is now done.* Where the app listens is configurable
+   rather than hard-coded, so no source change is needed on the day:
+
+   ```
+   # in ~/.config/systemd/user/auc.service
+   Environment=AUC_HOST=127.0.0.1
+   ```
+
+   With that set the app accepts connections only from the machine itself —
+   verified: it answers on loopback and refuses on the machine's network
+   address. Then put HTTPS in front of it. Tailscale Serve is the least-effort
+   route by a wide margin — one command, a real certificate, nothing to renew,
+   and the app becomes reachable only to devices on your tailnet:
+
+   ```
+   tailscale serve --bg 3000
+   tailscale serve status
+   ```
+
+   Caddy or nginx as a reverse proxy also works and is well documented, but is
+   more moving parts for the same result.
+
+   **Do not set `AUC_HOST=127.0.0.1` without a proxy in front**, or you will
+   lock yourself out of a headless machine.
+
+2. ~~**Start-on-boot fix.**~~ **Done.** `setup.sh` now runs
+   `loginctl enable-linger` itself, and reports clearly if it cannot. Without
+   lingering a systemd *user* service only starts when someone logs in at the
+   console, which on a headless machine is never — the most common headless
+   failure there is. `preflight.sh` checks it, and fails if it is off.
+
+3. ~~**Automated backups.**~~ **Done.** `setup.sh` installs a nightly timer
+   that writes a zip of the database and photos; Settings → Download Full
+   Backup does the same on demand, safely even while the app is running. Point
+   `AUC_BACKUP_DIR` at a cloud-synced folder so backups land off this machine.
+   See `BACKUPS.md`.
+
+   What is still on you: **restoring one**. A backup you have never opened is
+   a hope, not a backup. Note also that `data/logs/summary_validation.log` is
+   not in the zip.
 4. **Per-user accounts and an audit trail** (who wrote/approved/advanced what),
    if multiple committee members will use it.
 5. **Full-disk encryption** on the Spark, and checking your institution's

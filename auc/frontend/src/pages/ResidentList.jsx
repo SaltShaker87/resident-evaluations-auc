@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Upload, X, Users } from 'lucide-react';
+import { Plus, Search, Upload, Users } from 'lucide-react';
 import { getResidents, createResident, bulkImportResidents } from '../api';
 import Avatar from '../components/Avatar';
 
@@ -172,18 +172,21 @@ export default function ResidentList({ showToast }) {
   const [showBulk, setShowBulk] = useState(false);
   const navigate = useNavigate();
 
-  const load = async () => {
+  // useCallback so the effect below can depend on it honestly. Without it,
+  // load is a new function every render and listing it as a dependency would
+  // loop forever — which is why the dependency was previously left out.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getResidents(!showInactive);
       setResidents(data);
-    } catch (err) {
+    } catch {
       showToast('Failed to load residents');
     }
     setLoading(false);
-  };
+  }, [showInactive, showToast]);
 
-  useEffect(() => { load(); }, [showInactive]);
+  useEffect(() => { load(); }, [load]);
 
   const activeCount = residents.filter((r) => r.active).length;
 
