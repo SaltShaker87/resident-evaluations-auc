@@ -716,11 +716,24 @@ could configure the app.
 
 ## 11. Put HTTPS in front of the app and stop listening on the open network
 
-**ON ARRIVAL · depends on item 7**
+**ON ARRIVAL · item 7 is done, so this is now one line**
+
+> **Simplified by the Section 3 answers.** You reach the app only as
+> `localhost:3000` — either at the machine, or over an SSH tunnel through
+> Tailscale — and nobody else uses it. Nothing ever connects from another host.
+>
+> So `AUC_HOST=127.0.0.1` on its own is sufficient, and **Tailscale Serve
+> becomes optional**: SSH already encrypts the tunnel, and with the app bound to
+> loopback there is nothing on the hospital network to intercept. Add
+> `Environment=AUC_HOST=127.0.0.1` to `~/.config/systemd/user/auc.service`,
+> `systemctl --user daemon-reload && systemctl --user restart auc`, done.
+>
+> Set it up Serve anyway if you later want to open the app in a browser on your
+> laptop without an SSH tunnel. The rest of this entry still applies then.
 
 **Goal.** Set `AUC_HOST=127.0.0.1` so the app accepts connections only from the
-machine itself, and use Tailscale Serve to publish it over HTTPS on your
-tailnet.
+machine itself, and — optionally — use Tailscale Serve to publish it over HTTPS
+on your tailnet.
 
 **Why.** Today the app listens on every interface over plain HTTP. On hospital
 wifi that means the login page — and the password typed into it — are reachable
@@ -749,8 +762,11 @@ what was done.
 **Done when.**
 - `https://<spark-name>.<tailnet>.ts.net` loads the app with a valid certificate
   and no browser warning
-- From another computer on the hospital wifi that is **not** on your tailnet,
-  `curl http://<spark-lan-ip>:3000` refuses to connect
+- From another computer on the hospital wifi, `curl http://<spark-lan-ip>:3000`
+  refuses to connect — this is the check that matters, and it passes with
+  `AUC_HOST=127.0.0.1` alone
+- Your normal route still works: `ssh -L 3000:localhost:3000 <spark>` then
+  `localhost:3000` in the browser
 - Logging in over HTTPS works and the session persists
 
 **Risk to the current machine. None** — this is a Spark-only configuration
@@ -773,6 +789,12 @@ another in mind. Leaving that unresolved means that in six months, when
 something is generating summaries with a model you did not expect, you will have
 no way to tell which setting won.
 
+> **Now one command.** `bash auc/check-model.sh <model>` runs three real
+> sub-competency generations through the app's own prompt, parser and validator
+> and reports on both requirements below, plus the time per section. It exits
+> non-zero if the model cannot be used. Written precisely because neither
+> requirement appears on any model card.
+
 **Two things any replacement model must be verified against**, because the new
 generator depends on both and neither is guaranteed:
 
@@ -785,8 +807,13 @@ generator depends on both and neither is guaranteed:
    accommodate a model — it is what keeps invented evidence out of a resident's
    record. Change the model instead.
 
-Verify both on a real resident with real notes before a meeting depends on it,
-and keep `clinical-reasoning:latest` as the documented fallback.
+Run `check-model.sh` first, then verify on a real resident with real notes
+before a meeting depends on it.
+
+`clinical-reasoning:latest` is no longer the irreplaceable fallback it was
+described as — its Modelfile is on disk and its base weights are the public
+llama-3.2-3b-instruct — but it is still the *proven* one, so get it working on
+the Spark before experimenting with anything larger.
 
 Also worth recording in the README: which model was used, why it was chosen, and
 what the fallback is if it stops working. Your fine-tune remains the known-good

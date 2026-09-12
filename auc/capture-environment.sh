@@ -157,7 +157,50 @@ if command -v ollama &> /dev/null; then
     done < <(ollama list 2>/dev/null)
 fi
 
-ask "Q7 — Where is the underlying model file (.gguf, or the adapter weights) it was built from?"
+q "Q6/Q7 — Modelfiles and model weights found on this machine"
+printf '    Anything below is a file the fine-tune was built from, or built with.\n'
+printf '    These are the irreplaceable ones: Ollama can be reinstalled, a .gguf\n'
+printf '    that exists nowhere else cannot.\n\n'
+
+# Look in the obvious places rather than scanning the whole disk: the top of
+# home, and the directories the usual fine-tuning toolchains create.
+FT_FOUND=""
+for dir in "$HOME" "$HOME/Documents" "$HOME/Downloads" "$HOME/work" \
+           "$HOME/unsloth" "$HOME/llama.cpp" "$HOME/llama.cpp/models" "$HOME/hf-models"; do
+    [ -d "$dir" ] || continue
+    if [ "$dir" = "$HOME" ]; then depth=1; else depth=3; fi
+    while IFS= read -r found; do
+        [ -n "$found" ] || continue
+        FT_FOUND+="$(printf '%8s  %s' "$(du -h "$found" 2>/dev/null | cut -f1)" "$found")"$'\n'
+    done < <(find "$dir" -maxdepth "$depth" -type f \
+                  \( -iname '*.gguf' -o -iname '*modelfile*' -o -iname 'adapter_model.*' \
+                     -o -iname 'adapter_config.json' -o -iname '*.safetensors' \) \
+                  2>/dev/null)
+done
+
+FT_FOUND=$(printf '%s' "$FT_FOUND" | sort -u -k2)
+if [ -n "$FT_FOUND" ]; then
+    printf '%s\n' "$FT_FOUND" | sed 's/^/    /'
+else
+    printf '    (nothing found in the usual places — answer the blank below)\n'
+fi
+
+# A Modelfile is a short text file and is the actual recipe, so capture what is
+# in it rather than only where it is.
+printf '\n    Contents of each Modelfile found:\n'
+FT_MODELFILES=$(printf '%s\n' "$FT_FOUND" | awk 'NF {$1=""; sub(/^ +/, ""); print}' \
+    | grep -i 'modelfile' | sort -u)
+if [ -n "$FT_MODELFILES" ]; then
+    while IFS= read -r mf; do
+        [ -f "$mf" ] || continue
+        printf '\n    --- %s ---\n' "$mf"
+        redact < "$mf" 2>/dev/null | head -60 | sed 's/^/      | /'
+    done <<< "$FT_MODELFILES"
+else
+    printf '      (none found)\n'
+fi
+
+ask "Q7 — If the file the fine-tune was built from is not listed above, where is it?"
 ask "Q8 — Is any of that backed up anywhere other than this machine?"
 
 h "The app's own service (Q9-Q12)"
@@ -359,7 +402,9 @@ printf '\n  [ ] Answer every blank above.\n'
 printf '  [ ] Take a full backup (Settings -> Download Full Backup) and actually\n'
 printf '      restore it: unzip it and open auc.db from the zip. A backup you have\n'
 printf '      never restored is a hope, not a backup.\n'
-printf '  [ ] Copy the Modelfiles above somewhere that is not this machine.\n'
+printf '  [ ] Copy the Modelfiles above somewhere that is not this machine, along\n'
+printf '      with any .gguf or adapter weights listed under Q6/Q7. The Modelfile\n'
+printf '      is the recipe; the weights are what cannot be recreated.\n'
 printf '  [ ] Ask hospital IT whether a new device needs registering, and whether\n'
 printf '      devices on the wifi are allowed to talk to each other.\n'
 printf '\n(end of capture)\n'
