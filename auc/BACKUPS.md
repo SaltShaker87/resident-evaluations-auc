@@ -93,6 +93,28 @@ Now every daily backup lands in OneDrive and is copied offsite automatically.
 - Change how many days are kept: edit `AUC_BACKUP_KEEP_DAYS` in
   `~/.config/systemd/user/auc-backup.service`.
 
+## Checking that a backup would actually restore
+
+A backup you have never opened is a hope, not a backup — and since the database
+stopped being tracked in git, these zips are the only copy of your data.
+
+```bash
+bash auc/verify-backup.sh            # the newest backup
+bash auc/verify-backup.sh some.zip   # a particular one
+```
+
+It opens the archive, runs an integrity check on the database inside it, and
+prints what is in the backup beside what is live right now. Rows differing is
+normal — the backup is a snapshot. A missing table, a corrupt database or an
+archive that will not open is not, and it exits non-zero.
+
+Nothing is written outside a temporary directory and the live database is
+opened read-only, so it is safe to run at any time, including mid-meeting.
+
+**Do this now rather than the day you need it.** The failure worth catching is
+a database that is truncated inside an archive that opens perfectly well; you
+cannot tell by looking at the file.
+
 ## Restoring from a backup
 
 1. Stop the app: `systemctl --user stop auc`

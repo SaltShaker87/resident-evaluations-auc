@@ -716,11 +716,24 @@ could configure the app.
 
 ## 11. Put HTTPS in front of the app and stop listening on the open network
 
-**ON ARRIVAL · depends on item 7**
+**ON ARRIVAL · item 7 is done, so this is now one line**
+
+> **Simplified by the Section 3 answers.** You reach the app only as
+> `localhost:3000` — either at the machine, or over an SSH tunnel through
+> Tailscale — and nobody else uses it. Nothing ever connects from another host.
+>
+> So `AUC_HOST=127.0.0.1` on its own is sufficient, and **Tailscale Serve
+> becomes optional**: SSH already encrypts the tunnel, and with the app bound to
+> loopback there is nothing on the hospital network to intercept. Add
+> `Environment=AUC_HOST=127.0.0.1` to `~/.config/systemd/user/auc.service`,
+> `systemctl --user daemon-reload && systemctl --user restart auc`, done.
+>
+> Set it up Serve anyway if you later want to open the app in a browser on your
+> laptop without an SSH tunnel. The rest of this entry still applies then.
 
 **Goal.** Set `AUC_HOST=127.0.0.1` so the app accepts connections only from the
-machine itself, and use Tailscale Serve to publish it over HTTPS on your
-tailnet.
+machine itself, and — optionally — use Tailscale Serve to publish it over HTTPS
+on your tailnet.
 
 **Why.** Today the app listens on every interface over plain HTTP. On hospital
 wifi that means the login page — and the password typed into it — are reachable
@@ -749,8 +762,11 @@ what was done.
 **Done when.**
 - `https://<spark-name>.<tailnet>.ts.net` loads the app with a valid certificate
   and no browser warning
-- From another computer on the hospital wifi that is **not** on your tailnet,
-  `curl http://<spark-lan-ip>:3000` refuses to connect
+- From another computer on the hospital wifi, `curl http://<spark-lan-ip>:3000`
+  refuses to connect — this is the check that matters, and it passes with
+  `AUC_HOST=127.0.0.1` alone
+- Your normal route still works: `ssh -L 3000:localhost:3000 <spark>` then
+  `localhost:3000` in the browser
 - Logging in over HTTPS works and the session persists
 
 **Risk to the current machine. None** — this is a Spark-only configuration

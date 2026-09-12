@@ -66,8 +66,9 @@ model has to do before you trust it with a summary.
 ## Checking That Everything Works
 
 ```bash
-bash auc/preflight.sh   # the machine: models, index, services, disk, fonts
-bash auc/check.sh       # the code: lint and tests
+bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
+bash auc/check.sh          # the code: lint and tests
+bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
 ```
 
 Both print a line per check and say what to do about failures. `preflight.sh`
@@ -93,8 +94,8 @@ the app is running, and a nightly backup runs on a timer — point
 Note the validation log is **not** in the backup zip. For a QI study that log
 is research provenance, so copy it deliberately.
 
-A backup you have never restored is a hope, not a backup. Unzip one and open
-`auc.db` from it at least once.
+A backup you have never restored is a hope, not a backup — run
+`bash auc/verify-backup.sh`, which opens the newest one and checks it.
 
 ## File Structure
 
@@ -104,6 +105,7 @@ auc/
 ├── run.sh            ← created by setup, starts the app
 ├── preflight.sh      ← is this MACHINE healthy?
 ├── check.sh          ← is this CODE healthy?
+├── verify-backup.sh  ← would the newest backup actually restore?
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← the fuller manual
 ├── backend/

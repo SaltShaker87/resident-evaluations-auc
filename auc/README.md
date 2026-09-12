@@ -169,8 +169,9 @@ The two worth knowing about before anything goes wrong:
 Two commands, one for the machine and one for the code:
 
 ```bash
-bash auc/preflight.sh   # the machine: models, index, services, disk, fonts
-bash auc/check.sh       # the code: lint and tests, backend and frontend
+bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
+bash auc/check.sh          # the code: lint and tests, backend and frontend
+bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
 ```
 
 `preflight.sh` prints a pass/fail line for every assumption the app makes and
@@ -228,6 +229,7 @@ auc/
 ├── run.sh            ← created by setup, starts the app
 ├── preflight.sh      ← is this MACHINE healthy? models, index, services, disk
 ├── check.sh          ← is this CODE healthy? lint and tests, both halves
+├── verify-backup.sh  ← would the newest backup actually restore?
 ├── capture-environment.sh  ← write down how this machine is configured
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← you are here

@@ -72,7 +72,16 @@ will still generate — agonisingly slowly, on the processor — and you may not
 immediately realise why. I cannot verify the current state of GB10 support
 from here; test it before you trust it (Phase C of the checklist).
 
-**2. Your custom fine-tune exists in exactly one place on Earth.**
+**2. Your custom fine-tune's *recipe* exists in exactly one place on Earth.**
+*(Revised: the weights, it turns out, do not — see Section 3 Q8.)* The plan is
+to re-download the weights from Hugging Face rather than copy `~/.ollama`
+across. That works for the weights. It does **not** carry the Modelfile — the
+system prompt, temperature, context length and template that make
+`clinical-reasoning:latest` the model you validated rather than just its base
+weights. Those live in `~/Modelfile-clinical` and `~/Modelfile-merged`, and
+`capture-environment.sh` copies their contents into the capture file. Keep it.
+
+The original wording, still true of the Modelfile alone:
 `clinical-reasoning:latest`, your Llama-3.2-3B fine-tune, lives inside
 `~/.ollama` on the old machine and nowhere else. You have said you intend to
 move to a larger model such as Nemotron on the Spark — good — but until that
@@ -261,10 +270,19 @@ standing between you and losing it. Section 6's restore drill is not optional.
 
 # Section 3 — Things configured outside the repo
 
-I cannot see the old machine, so these are questions for you. Fill in the
-blanks now, while the old machine is still in front of you — every one of
-these is something that exists only as a setting you made by hand, and every
-one of them is easy to forget until the moment it is missing.
+Every one of these exists only as a setting made by hand, and every one is easy
+to forget until the moment it is missing.
+
+**Run `bash auc/capture-environment.sh` first** — it answers most of them
+automatically into a file in your home directory, including the contents of
+every Modelfile on the machine. The blanks still shown below are the ones that script
+answers for itself — `ollama list`, the unit files, timers, `nvidia-smi`,
+lingering — so their answers live in your capture file rather than in this
+repository, where they do not belong. What is written in below is the part only
+a person can answer.
+
+**Still outstanding: Q31 and Q32.** Q31 in particular — it contains the real
+deadline for the Spark being ready.
 
 ### Ollama
 
@@ -282,11 +300,30 @@ one of them is easy to forget until the moment it is missing.
 ### The custom fine-tune
 
 6. Do you still have the Modelfile used to create `clinical-reasoning:latest`? Where?
-   → `______________________________`
+   → **Yes — `~/Modelfile-clinical` and `~/Modelfile-merged`**, in the home
+   directory. `capture-environment.sh` now copies their contents into the
+   capture file.
 7. Do you still have the underlying model file it was built from (a `.gguf`, or adapter weights)? Where?
-   → `______________________________`
+   → **Yes — `~/clinical-reasoning-merg…​.gguf`**, also in the home directory.
+   Not inside `~/.ollama`: Ollama stores content-addressed blobs under
+   `models/blobs/` with sha256 filenames, never a named `.gguf`.
 8. Is any of that backed up anywhere other than the old machine?
-   → `______________________________`
+   → **Intended plan: re-download from Hugging Face**, including the fine-tune,
+   rather than copying `~/.ollama` across.
+
+   ⚠ **This only half works, and the half it misses is the one that matters.**
+   An Ollama model is weights *plus* a Modelfile — system prompt, temperature,
+   context length, template. Hugging Face has the weights. It does not have the
+   Modelfile, and a fine-tune running with a different system prompt or
+   temperature is not the model that was validated.
+
+   So the plan is sound **provided** the Modelfiles travel separately. They are
+   in the capture file; keep it. Two things still to confirm while the old
+   machine is here: that the model really is uploaded, and that the account can
+   still be signed into.
+
+   The weights being re-downloadable does downgrade this from "exists in
+   exactly one place on Earth" — but only for the weights.
 
 ### The app's own service
 
@@ -308,20 +345,36 @@ one of them is easy to forget until the moment it is missing.
 15. Run `systemctl --user list-timers`. Is the backup timer actually firing, and when did it last run?
     → `______________________________`
 16. When did you last confirm a backup could be *restored* — not just that a file appeared?
-    → `______________________________`
+    → **Never, as of 2026-09-12.** This is the largest open risk in the
+    migration: the database left git in `f0c3b5a`, so these zips are the only
+    copy. `bash auc/verify-backup.sh` now does the drill in one command — it
+    opens the newest archive, integrity-checks the database inside it, and
+    compares it against live.
 
 ### Network and access
 
 17. Is Tailscale installed on the old machine? Under which account?
-    → `______________________________`
+    → Yes — it is how the machine is reached remotely. Account recorded in the
+    capture file's `tailscale status` output.
 18. Is a firewall active? (`sudo ufw status`) What is allowed?
     → `______________________________`
 19. Does the hospital network require registering a device's hardware address, or signing in through a web page, before it grants access?
-    → `______________________________`
+    → **Credentialed wifi login, no hardware registration.** The credentials are
+    to hand and will be used on the Spark. So Phase A should expect a sign-in
+    step before `curl -sI https://pypi.org` will succeed.
 20. How do you reach the app today — `localhost:3000`, a hostname, a fixed address?
-    → `______________________________`
+    → **Always `localhost:3000`.** Either sitting at the machine, or over SSH
+    through Tailscale and then opening `localhost:3000`. Never by the machine's
+    network address.
+
+    **This simplifies item 11 considerably.** Nothing ever connects to the app
+    from another host, so `AUC_HOST=127.0.0.1` is sufficient on its own and
+    Tailscale Serve becomes optional convenience rather than a requirement —
+    SSH already encrypts the tunnel. One line in the service file, no reverse
+    proxy to set up on arrival day.
 21. Does anyone other than you use the app? From what device?
-    → `______________________________`
+    → **No one else.** Single user, which is what makes the single shared
+    password and the localhost-only binding above adequate.
 
 ### Graphics and system
 
@@ -341,7 +394,8 @@ one of them is easy to forget until the moment it is missing.
 27. Roughly how large is `auc/data/photos/`? (`du -sh auc/data/photos`)
     → `______________________________`
 28. Do you have the app password and recovery key written down somewhere you can reach on arrival day?
-    → `______________________________`
+    → **Yes, both.** Bring them; the database carries the hash, so the same
+    password works on the Spark.
 
 ### The summary generator and the study
 
@@ -349,9 +403,9 @@ one of them is easy to forget until the moment it is missing.
     → `______________________________`
 30. Which model have you actually been generating summaries with since the rewrite, and roughly how long does a full 21-section run take?
     → `______________________________`
-31. Is the recall QI study still collecting data? If so, when is the next CCC meeting — i.e. what is your real deadline for the Spark being ready?
+31. **⚠ OUTSTANDING.** Is the recall QI study still collecting data? If so, when is the next CCC meeting — i.e. what is your real deadline for the Spark being ready?
     → `______________________________`
-32. Have you exported the study CSVs yet, and where did you put them?
+32. **⚠ OUTSTANDING.** Have you exported the study CSVs yet, and where did you put them?
     → `______________________________`
 33. Does `auc/data/logs/summary_validation.log` exist on the old machine, and do you want its history kept?
     → `______________________________`
@@ -375,10 +429,14 @@ given. Tick as you go.
       how it was made, so copy it somewhere that is not this machine.
 - [ ] **Answer the blanks it leaves.** The ones only you know: the hospital network, where the
       `.gguf` came from, when you last restored a backup.
-- [ ] **Take a full backup and verify it opens.** Settings → Download Full Backup. Then actually unzip it and confirm `auc.db` and `photos/` are inside.
-      *Observable:* `unzip -l auc-backup-*.zip` lists `auc.db` and photo files.
-- [ ] **Prove the backup restores.** On the old machine, copy `auc.db` from the zip to a scratch folder and open it: `sqlite3 /tmp/check.db "select count(*) from residents"`.
-      *Observable:* it prints a number matching your resident count. A backup you have never restored is a hope, not a backup.
+- [ ] **Prove a backup restores.** `bash auc/verify-backup.sh`
+      *Observable:* it opens the newest archive, integrity-checks the database inside it, and
+      prints what is in the backup beside what is live. Rows differing is normal — the backup
+      is a snapshot. A missing table, a corrupt database, or an archive that will not open is
+      not, and it exits non-zero.
+      **As of 2026-09-12 this had never been done.** Since the database left git, these zips
+      are the only copy of your data. The failure worth catching is a truncated database
+      inside an archive that opens perfectly well; you cannot tell by looking at the file.
 - [ ] **Record the exact model names** you are using: `ollama list > ~/ollama-inventory.txt`.
 - [ ] **Copy the Modelfile for your fine-tune somewhere safe**, if you still have it.
 - [ ] ~~**Do the "can be done now" items**~~ — done. Items 1–10 of
