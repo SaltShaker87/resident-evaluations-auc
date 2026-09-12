@@ -115,10 +115,29 @@ cat > "$SCRIPT_DIR/run.sh" << 'RUNEOF'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/backend"
 source venv/bin/activate
-exec uvicorn app:app --host 0.0.0.0 --port 3000
+
+# Where to listen comes from backend/config.py, which honours AUC_HOST and
+# AUC_PORT from the environment. Reading it here rather than repeating the
+# defaults means there is one place to change them.
+eval "$(python - <<'PYEOF'
+import shlex
+
+import config
+
+print(f"AUC_HOST={shlex.quote(config.HOST)}")
+print(f"AUC_PORT={shlex.quote(str(config.PORT))}")
+PYEOF
+)"
+
+exec uvicorn app:app --host "$AUC_HOST" --port "$AUC_PORT"
 RUNEOF
 chmod +x "$SCRIPT_DIR/run.sh"
 echo "  ✓ Created run.sh"
+
+# Ask config.py where the app will actually listen, so what we print below is
+# what will happen rather than a guess.
+EFFECTIVE_HOST=$("$SCRIPT_DIR/backend/venv/bin/python" -c "import sys; sys.path.insert(0, '$SCRIPT_DIR/backend'); import config; print(config.HOST)")
+EFFECTIVE_PORT=$("$SCRIPT_DIR/backend/venv/bin/python" -c "import sys; sys.path.insert(0, '$SCRIPT_DIR/backend'); import config; print(config.PORT)")
 
 # Create systemd service
 SERVICE_FILE="$HOME/.config/systemd/user/auc.service"
@@ -132,7 +151,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR/backend
-ExecStart=$SCRIPT_DIR/backend/venv/bin/uvicorn app:app --host 0.0.0.0 --port 3000
+ExecStart=$SCRIPT_DIR/run.sh
 Restart=on-failure
 RestartSec=5
 Environment=OLLAMA_URL=http://localhost:11434
@@ -200,9 +219,6 @@ fi
 echo "  ╔══════════════════════════════════════╗"
 echo "  ║   Setup complete!                     ║"
 echo "  ║                                       ║"
-echo "  ║   AUC is now running at:              ║"
-echo "  ║   http://localhost:3000               ║"
-echo "  ║                                       ║"
 echo "  ║   It will start automatically         ║"
 echo "  ║   when your machine boots.            ║"
 echo "  ║                                       ║"
@@ -210,4 +226,11 @@ echo "  ║   To stop:  systemctl --user stop auc ║"
 echo "  ║   To start: systemctl --user start auc║"
 echo "  ║   Logs:     journalctl --user -u auc  ║"
 echo "  ╚══════════════════════════════════════╝"
+echo ""
+echo "  AUC is now running at: http://localhost:$EFFECTIVE_PORT"
+if [ "$EFFECTIVE_HOST" = "0.0.0.0" ]; then
+    echo "  Listening on every network interface, over plain HTTP."
+else
+    echo "  Listening on $EFFECTIVE_HOST only."
+fi
 echo ""

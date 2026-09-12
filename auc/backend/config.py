@@ -1,5 +1,28 @@
 import os
 
+# ---------------------------------------------------------------------------
+# Where the app listens
+#
+# AUC_HOST : which network interfaces to accept connections on.
+#            0.0.0.0 (the default, and what this has always done) means every
+#            interface — anyone who can reach this machine on the network can
+#            reach the app. That is fine on a trusted home network.
+#
+#            On hospital wifi it is not: the login page, and the password typed
+#            into it, cross the network over plain HTTP where they can be read.
+#            There, set this to 127.0.0.1 so only this machine can connect, and
+#            put Tailscale Serve in front of it for HTTPS. Do not set it to
+#            127.0.0.1 without a proxy in front, or you will lock yourself out
+#            of a headless machine.
+#
+# AUC_PORT : the port to listen on. Default 3000.
+#
+# These are read by run.sh and written into the systemd unit by setup.sh, so
+# changing them takes effect for the service too.
+# ---------------------------------------------------------------------------
+HOST: str = os.environ.get("AUC_HOST", "0.0.0.0")
+PORT: int = int(os.environ.get("AUC_PORT", "3000"))
+
 OLLAMA_URL: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "clinical-reasoning:latest")
 OLLAMA_MAX_TOKENS: int = int(os.environ.get("OLLAMA_MAX_TOKENS", "2048"))
