@@ -179,22 +179,30 @@ The two worth knowing about before anything goes wrong:
 
 ## Checking That Everything Works
 
-Two commands, one for the machine and one for the code:
+Four scripts, each answering a different question. All of them print a line per
+check and say what to do about the failures.
 
 ```bash
-bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
-bash auc/check.sh          # the code: lint and tests, backend and frontend
-bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
-bash auc/check-model.sh <model>   # the model: can it actually write summaries?
+bash auc/preflight.sh             # is this MACHINE healthy?
+bash auc/check.sh                 # is this CODE healthy?
+bash auc/verify-backup.sh         # would the newest BACKUP actually restore?
+bash auc/check-model.sh <model>   # can this MODEL actually write summaries?
 ```
 
-`preflight.sh` prints a pass/fail line for every assumption the app makes and
-says what to do about the failures. It only reads, so it is safe to run at any
-time — including mid-meeting. Run it after setup on a new machine, and first
-whenever something stops working.
+**`preflight.sh`** checks every environmental assumption the app makes:
+processor family, Python and Node versions, whether every package *imports*
+(installing and importing are different things, and the difference is where a
+new machine bites), the built interface, the bundled fonts, Ollama and its
+models, the ACGME index and its embedding-model stamp, the database and its
+password, photos versus residents claiming one, the PDF fonts, the services,
+lingering, and whether the app answers on its port.
 
-`check.sh` runs ruff, pytest, shellcheck, ESLint and the frontend build. It
-needs the checking tools once per machine:
+It only reads, so it is safe at any time — including mid-meeting. Run it after
+setup on a new machine, and first whenever something stops working. "Run
+preflight" is a better first instruction than "read the manual again".
+
+**`check.sh`** runs ruff, pytest, shellcheck, ESLint and the frontend build.
+It needs the checking tools once per machine:
 
 ```bash
 auc/backend/venv/bin/pip install -r auc/backend/requirements-dev.txt
@@ -202,6 +210,44 @@ auc/backend/venv/bin/pip install -r auc/backend/requirements-dev.txt
 
 The tests never touch real data — they point `AUC_DATA_DIR` at a scratch
 directory before importing the app, and assert that it worked.
+
+**`verify-backup.sh`** opens the newest backup (or one you name), runs an
+integrity check on the database inside it, and prints what is in the backup
+beside what is live right now. Rows differing is normal; a backup is a
+snapshot. A missing table, a corrupt database, or an archive that will not open
+is not, and it exits non-zero. It also says whether the archive was written by
+the nightly timer or downloaded by hand, which are different questions — see
+`BACKUPS.md`.
+
+The failure worth catching is a database that is truncated inside an archive
+that opens perfectly well. You cannot tell by looking at the file.
+
+**`check-model.sh`** is described under *Changing the AI Model* above.
+
+## Writing Down How This Machine Is Set Up
+
+```bash
+bash auc/capture-environment.sh
+```
+
+Some of what makes this app work is not in the repository: which model Ollama
+is running, what is in the unit files, whether lingering is on, where backups
+go, the Modelfile behind a fine-tuned model. All of it exists only because
+somebody set it by hand, and all of it is easy to forget until it is missing.
+
+This writes it into a dated file in your **home directory** — deliberately
+outside the repository, so it cannot be committed by accident, and readable
+only by you. Anything shaped like a credential is masked: an API key is
+reported as set or unset, never printed, and the password hashes in the
+database are never read.
+
+It captures the **Modelfile of every installed model**, and searches the usual
+places for `.gguf` files and adapter weights. That matters more than it sounds:
+an Ollama model is weights *plus* a Modelfile — the system prompt, temperature
+and template. Re-downloading weights from Hugging Face gets you half of it.
+Keep the capture file; it holds the other half.
+
+A handful of questions it cannot answer are left as blanks for you.
 
 ## CCC Meeting Capture
 
@@ -231,9 +277,23 @@ Three ways to get data out, all explained in **`BACKUPS.md`**:
   summary; saves a one-pager to your Downloads folder.
 - **Manual full backup** — **Settings → Download Full Backup (.zip)** saves a
   complete copy (database **and** photos) to your Downloads folder.
-- **Automated daily backup** (recommended) — `setup.sh` installs a daily
-  background backup. Point it at a OneDrive-synced folder so copies go offsite
-  automatically. Setup and restore steps are in **`BACKUPS.md`**.
+- **Automated daily backup** (recommended) — `setup.sh` installs a background
+  backup on a timer, by default at 02:00. Point `AUC_BACKUP_DIR` at a
+  OneDrive-synced folder so copies go offsite automatically. Setup and restore
+  steps are in **`BACKUPS.md`**.
+
+  ⚠ **On a machine that is switched off overnight, 02:00 never arrives.** The
+  timer is set `Persistent=true`, so the missed run fires at the next boot
+  instead — which means backups land whenever you next turn the machine on,
+  not nightly. Everything still gets backed up eventually, but **the session
+  you just finished is unprotected until the next boot.** On an always-on
+  machine this does not arise. To close it on a desktop, move the schedule to a
+  time the machine is actually on; `BACKUPS.md` has the edit, and `setup.sh`
+  preserves it.
+
+Check that any of this is actually working with `bash auc/verify-backup.sh`.
+A backup you have never opened is a hope, not a backup — and since the database
+is not tracked in git, those archives are the only copy of your data.
 
 ## File Structure
 

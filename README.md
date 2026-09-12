@@ -72,14 +72,20 @@ bash auc/check-model.sh nemotron:latest
 ## Checking That Everything Works
 
 ```bash
-bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
-bash auc/check.sh          # the code: lint and tests
-bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
-bash auc/check-model.sh <model>   # the model: can it actually write summaries?
+bash auc/preflight.sh             # is this MACHINE healthy?
+bash auc/check.sh                 # is this CODE healthy?
+bash auc/verify-backup.sh         # would the newest BACKUP actually restore?
+bash auc/check-model.sh <model>   # can this MODEL actually write summaries?
 ```
 
-Both print a line per check and say what to do about failures. `preflight.sh`
-only reads, so it is safe to run at any time.
+Each prints a line per check and says what to do about the failures.
+`preflight.sh` and `verify-backup.sh` only read, so they are safe to run at any
+time — including mid-meeting. `auc/README.md` explains what each one covers.
+
+There is also `bash auc/capture-environment.sh`, which writes down how this
+particular machine is configured — the models, the service files, the
+Modelfile behind a fine-tuned model — into a file in your home directory. Worth
+running before moving to a new computer.
 
 ## Backing Up Your Data
 
@@ -94,9 +100,14 @@ the repository will ever remind you the database exists. Your backup is the
 only thing protecting it.
 
 Settings → **Download Full Backup** makes a consistent copy safely even while
-the app is running, and a nightly backup runs on a timer — point
-`AUC_BACKUP_DIR` at a cloud-synced folder so it lands off this machine. See
-`auc/BACKUPS.md`.
+the app is running, and a backup also runs on a timer — point `AUC_BACKUP_DIR`
+at a cloud-synced folder so it lands off this machine. See `auc/BACKUPS.md`.
+
+⚠ **If this machine is switched off overnight, the 02:00 timer never fires.**
+The missed run happens at the next boot instead, so backups land when you turn
+the machine on rather than nightly — and the session you just finished stays
+unprotected until then. `auc/BACKUPS.md` explains how to move the schedule to a
+time the machine is actually on.
 
 Note the validation log is **not** in the backup zip. For a QI study that log
 is research provenance, so copy it deliberately.
@@ -114,6 +125,7 @@ auc/
 ├── check.sh          ← is this CODE healthy?
 ├── verify-backup.sh  ← would the newest backup actually restore?
 ├── check-model.sh    ← can this model actually write summaries?
+├── capture-environment.sh  ← write down how this machine is configured
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← the fuller manual
 ├── backend/
@@ -127,5 +139,6 @@ auc/
 │   └── dist/         ← built by setup, served to your browser
 └── data/
     ├── auc.db        ← your database (created on first run)
-    └── photos/       ← resident photos
+    ├── photos/       ← resident photos
+    └── logs/         ← what the AI claimed vs. what survived validation
 ```

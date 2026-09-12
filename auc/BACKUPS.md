@@ -32,6 +32,58 @@ contents as the manual backup) into a folder you choose. It keeps the last
 **14 days** and deletes older ones automatically. It's safe to run while the
 app is in use.
 
+**Telling the two kinds apart from the filename:**
+
+| Filename | Where it came from |
+|---|---|
+| `auc-backup-2026-09-12_020000.zip` | the timer — date **underscore** time |
+| `auc-backup-2026-09-12.zip` | Settings → Download Full Backup — date only |
+
+Worth knowing, because verifying an archive you downloaded yourself proves the
+archive is sound but says nothing about whether the automation is working.
+`verify-backup.sh` reports which kind it checked.
+
+### ⚠ If the machine is switched off overnight
+
+2 AM never arrives on a desktop that is shut down at night, so the timer never
+fires on schedule. It is installed with `Persistent=true`, which means systemd
+runs the *missed* job at the next boot instead.
+
+The upshot is that backups land **whenever you next turn the machine on**, not
+nightly. You can see this in the journal — the run times are minutes after a
+boot rather than 02:00:
+
+```bash
+journalctl --user -u auc-backup.service --since "14 days ago"
+```
+
+Mostly this is harmless: while the machine is off, nobody is adding notes, so
+there is nothing new to lose. The real gap is at the other end — **notes you
+enter today are not backed up until the next boot.** Finish a committee
+meeting, shut down, and if the disk fails overnight the newest archive predates
+that meeting. Taking a manual backup at the end of a session closes it.
+
+To fix it properly, move the schedule to times the machine is actually on. Edit
+`~/.config/systemd/user/auc-backup.timer`:
+
+```ini
+[Timer]
+OnCalendar=*-*-* 12:00:00
+OnCalendar=*-*-* 19:00:00
+OnBootSec=5min
+Persistent=true
+```
+
+then `systemctl --user daemon-reload && systemctl --user restart auc-backup.timer`.
+Several `OnCalendar=` lines mean several runs a day, and `OnBootSec=` adds one
+shortly after every startup.
+
+**Your edit survives a re-run of `setup.sh`** — it carries the schedule and the
+`Environment=` settings forward, keeps the previous file alongside as
+`.bak-<timestamp>`, and prints what it kept.
+
+None of this arises on a machine that stays on, where 02:00 simply happens.
+
 **Where it goes:** the folder named in `AUC_BACKUP_DIR`. By default that's
 `~/auc-backups` on the Linux PC — which is *on the same disk as the app*, so
 on its own it does **not** protect against that disk failing. The next step
@@ -90,8 +142,11 @@ Now every daily backup lands in OneDrive and is copied offsite automatically.
 - See the result/logs: `journalctl --user -u auc-backup.service`
 - Change frequency: edit `OnCalendar=` in `~/.config/systemd/user/auc-backup.timer`
   (e.g. `OnCalendar=hourly`), then `systemctl --user daemon-reload`.
+  See the note above if this machine is off overnight.
 - Change how many days are kept: edit `AUC_BACKUP_KEEP_DAYS` in
   `~/.config/systemd/user/auc-backup.service`.
+- Both survive re-running `setup.sh`, which preserves your edits rather than
+  regenerating over them.
 
 ## Checking that a backup would actually restore
 
