@@ -69,7 +69,7 @@ def load_ontology():
     try:
         return json.loads(ONTOLOGY_FILE.read_text(encoding="utf-8"))
     except Exception as e:
-        raise RagUnavailable(f"Could not read ACGME ontology: {e}")
+        raise RagUnavailable(f"Could not read ACGME ontology: {e}") from e
 
 
 def open_collection():
@@ -80,8 +80,8 @@ def open_collection():
         )
     try:
         import chromadb
-    except ImportError:
-        raise RagUnavailable("chromadb is not installed in this environment.")
+    except ImportError as e:
+        raise RagUnavailable("chromadb is not installed in this environment.") from e
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         return client.get_collection(COLLECTION_NAME)
@@ -89,7 +89,7 @@ def open_collection():
         raise RagUnavailable(
             f"ACGME collection '{COLLECTION_NAME}' is not available: {e}. "
             "Run 'python auc/rag/build_index.py' to (re)build it."
-        )
+        ) from e
 
 
 def _embed(text):
@@ -250,7 +250,7 @@ def fetch_chunks(collection, sub_id):
     metas = got.get("metadatas") or []
 
     milestones = supplemental = None
-    for meta, doc in zip(metas, docs):
+    for meta, doc in zip(metas, docs, strict=False):
         if meta.get("source") == MILESTONES_SOURCE:
             milestones = doc
         elif meta.get("source") == SUPPLEMENT_SOURCE:
@@ -296,7 +296,6 @@ def compose_prompt(resident_label, comments):
         raise RagUnavailable("No comment text was available to route to ACGME competencies.")
 
     domains = ontology["domains"]
-    sub_by_id = {s["id"]: s for s in ontology["subcompetencies"]}
 
     sections = []
     routing_info = {}  # sub_id -> count, for server-side logging

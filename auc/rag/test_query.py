@@ -66,7 +66,7 @@ def main():
 
     print(f'Query: {query}\n')
     print(f"Top {len(metadatas)} matches:")
-    for rank, (meta, distance) in enumerate(zip(metadatas, distances), start=1):
+    for rank, (meta, distance) in enumerate(zip(metadatas, distances, strict=False), start=1):
         print(f"\n{rank}. [{meta['id']}] {meta['name']}")
         print(f"   domain:   {meta['domain']}")
         print(f"   source:   {meta['source']}")

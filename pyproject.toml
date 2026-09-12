@@ -1,0 +1,39 @@
+# Configuration for the checking tools. There is no Python package here to
+# build — this file exists so pytest and ruff can be run from the repository
+# root without arguments.
+
+[tool.pytest.ini_options]
+testpaths = ["auc/backend/tests"]
+# The backend is a flat set of modules rather than a package, so it has to be
+# on the path for `import app` to work the way it does at runtime.
+pythonpath = ["auc/backend"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["auc/backend/venv", "auc/frontend/node_modules"]
+
+[tool.ruff.lint]
+# Chosen to catch defects rather than to enforce a style: pycodestyle errors,
+# pyflakes (unused imports and variables, redefinitions), bugbear (mutable
+# defaults, swallowed exception context), and import order.
+#
+# Deliberately NOT the "UP" (pyupgrade) rules. They would rewrite every
+# Optional[str] into str | None across the whole API surface — 79 changes to
+# the annotations FastAPI and Pydantic read at runtime, on a branch whose
+# entire purpose is not to disturb a working deployment. That is a trade worth
+# making some other week.
+select = ["E", "F", "W", "B", "I"]
+ignore = [
+    # Long strings in user-facing messages read better unwrapped than folded.
+    "E501",
+    # Depends(), Query(), File() in a default argument is the FastAPI idiom,
+    # not the Python footgun this rule is about.
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures must set AUC_DATA_DIR before anything imports the app, so the
+# imports in conftest.py genuinely cannot all sit at the top.
+"auc/backend/tests/conftest.py" = ["E402"]

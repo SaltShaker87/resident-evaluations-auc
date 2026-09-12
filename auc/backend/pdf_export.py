@@ -20,9 +20,11 @@ from datetime import date
 from pathlib import Path
 
 from fpdf import FPDF
-
 from summary_builder import (
-    REPORT_SCHEMA, STATUS_OK, STATUS_NO_EVIDENCE, STATUS_INSUFFICIENT,
+    REPORT_SCHEMA,
+    STATUS_INSUFFICIENT,
+    STATUS_NO_EVIDENCE,
+    STATUS_OK,
 )
 
 DRAFT_DISCLAIMER = (

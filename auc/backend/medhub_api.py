@@ -44,9 +44,7 @@ import sqlite3
 import uuid
 from typing import Optional
 
-import httpx
-
-from config import MEDHUB_API_URL, MEDHUB_API_KEY
+from config import MEDHUB_API_KEY, MEDHUB_API_URL
 
 
 def is_configured() -> bool:

@@ -32,9 +32,8 @@ from datetime import datetime
 
 import anyio
 import httpx
-
 import rag_retrieval
-from config import DATA_DIR, OLLAMA_URL, OLLAMA_MODEL
+from config import DATA_DIR, OLLAMA_MODEL, OLLAMA_URL
 
 # ---------------------------------------------------------------------------
 # Configuration — change the model here, in one place.
@@ -256,15 +255,15 @@ def parse_model_json(raw):
 
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as first_error:
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise ValueError("no JSON object found in response")
+            raise ValueError("no JSON object found in response") from first_error
         try:
             parsed = json.loads(text[start:end + 1])
         except json.JSONDecodeError as e:
-            raise ValueError(f"invalid JSON: {e}")
+            raise ValueError(f"invalid JSON: {e}") from e
 
     if not isinstance(parsed, dict):
         raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")

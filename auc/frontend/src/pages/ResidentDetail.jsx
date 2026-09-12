@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Camera, Plus, Pencil, Trash2, Check,
-  Sparkles, ChevronDown, ChevronUp, X, AlertCircle, FileDown,
+  Sparkles, X, AlertCircle, FileDown,
 } from 'lucide-react';
 import {
   getResident, updateResident, deleteResident, uploadPhoto,
@@ -707,7 +707,7 @@ export default function ResidentDetail({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     try {
       const [r, n, f, s] = await Promise.all([
         getResident(id),
@@ -719,13 +719,13 @@ export default function ResidentDetail({ showToast }) {
       setNotes(n);
       setFollowups(f);
       setSummaries(s);
-    } catch (err) {
+    } catch {
       showToast('Failed to load resident data');
     }
     setLoading(false);
-  };
+  }, [id, showToast]);
 
-  useEffect(() => { loadAll(); }, [id]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
