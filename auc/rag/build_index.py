@@ -141,6 +141,11 @@ def main():
     print("Breakdown by source file:")
     for filename in DOCUMENT_FILES:
         print(f"  {filename}: {source_counts[filename]} chunks")
+    print()
+    print("Now restart the app so it picks this up:")
+    print("  systemctl --user restart auc")
+    print("A running app holds the index it opened at startup, so until you do")
+    print("this it will keep searching — and reporting on — the previous one.")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Sun, Moon, GraduationCap, RotateCcw, AlertTriangle, Download, Check } from 'lucide-react';
-import { getOllamaModels, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
+import { getOllamaModels, getRagStatus, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
 import AdvancementWizard from '../components/AdvancementWizard';
+
+// Index health, as one word in the tag. The sentence explaining it — and what
+// to do about it — comes from the server, so there is one wording to maintain.
+const RAG_STATUS_LABELS = {
+  ok: 'Ready',
+  warning: 'Attention',
+  error: 'Unavailable',
+};
 
 function formatSnapshotDate(dateStr) {
   if (!dateStr) return '';
@@ -20,6 +28,9 @@ export default function Settings({ theme, setTheme }) {
   const [defaultModel, setDefaultModelState] = useState(
     () => localStorage.getItem('defaultOllamaModel') || ''
   );
+
+  // ACGME index health. null while the first check is in flight.
+  const [ragStatus, setRagStatus] = useState(null);
 
   const [showWizard, setShowWizard] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
@@ -94,6 +105,15 @@ export default function Settings({ theme, setTheme }) {
     }).catch(() => {
       setOllamaError('Ollama not reachable — make sure it\'s running.');
     });
+
+    // Checked here so a broken index is visible before someone tries to
+    // generate a summary in a committee meeting.
+    getRagStatus()
+      .then((result) => setRagStatus(result))
+      .catch(() => setRagStatus({
+        level: 'error',
+        message: 'Could not check the ACGME index — the server did not answer.',
+      }));
   }, []);
 
   const handleModelChange = (e) => {
@@ -154,9 +174,9 @@ export default function Settings({ theme, setTheme }) {
               Used when generating AI summaries on resident pages
             </div>
           </div>
-          <div className="settings-row__control">
+          <div className={`settings-row__control${ollamaError ? ' settings-row__control--message' : ''}`}>
             {ollamaError ? (
-              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              <span className="settings-row__message">
                 {ollamaError}
               </span>
             ) : (
@@ -173,6 +193,20 @@ export default function Settings({ theme, setTheme }) {
                 ))}
               </select>
             )}
+          </div>
+        </div>
+
+        <div className="settings-row settings-row--status">
+          <div className="settings-row__heading">
+            <div className="settings-row__label">ACGME reference index</div>
+            <span className={`tag tag--index tag--index-${ragStatus ? ragStatus.level : 'checking'}`}>
+              {RAG_STATUS_LABELS[ragStatus?.level] || 'Checking'}
+            </span>
+          </div>
+          <div className="settings-row__desc">
+            {ragStatus
+              ? ragStatus.message
+              : 'Checking the index that grounds summaries in the ACGME milestones…'}
           </div>
         </div>
       </div>

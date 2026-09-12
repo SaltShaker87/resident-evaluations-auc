@@ -98,6 +98,10 @@ auc/backend/venv/bin/pip install -r auc/backend/requirements-rag.txt   # chromad
 # (re)build the index after editing the Markdown files
 auc/backend/venv/bin/python auc/rag/build_index.py
 
+# then restart the app — it holds the index it opened at startup, so until you
+# restart it keeps searching (and reporting on) the previous one
+systemctl --user restart auc
+
 # sanity-check retrieval
 auc/backend/venv/bin/python auc/rag/test_query.py "missed a posterior circulation stroke"
 ```

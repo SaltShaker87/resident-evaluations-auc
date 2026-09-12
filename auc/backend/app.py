@@ -641,6 +641,18 @@ async def get_ollama_models():
     except Exception:
         return {"error": "Could not connect to Ollama. Make sure Ollama is running (run 'ollama serve')."}
 
+@app.get("/api/rag/status")
+def get_rag_status():
+    """Report whether the ACGME index is usable.
+
+    Lets Settings show index health the same way it shows Ollama health, so a
+    broken index is visible before someone tries to generate a summary in a
+    committee meeting. Never raises — a status check that can take the app down
+    is worse than no status check.
+    """
+    return rag_retrieval.index_status()
+
+
 # ---------------------------------------------------------------------------
 # AI Summary endpoints
 # ---------------------------------------------------------------------------
