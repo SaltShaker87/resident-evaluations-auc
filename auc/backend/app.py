@@ -28,7 +28,7 @@ import httpx
 # Configuration
 # ---------------------------------------------------------------------------
 
-from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
+from config import DATA_DIR, OLLAMA_URL, OLLAMA_MODEL, OLLAMA_MAX_TOKENS, MEDHUB_API_URL, MEDHUB_API_KEY
 import medhub_api
 import rag_retrieval
 import summary_builder
@@ -38,7 +38,8 @@ import pdf_export
 import backup as backup_helper
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+# DATA_DIR comes from config so it can be pointed elsewhere — another disk, or
+# a scratch copy for the tests, which must never open the real database.
 PHOTOS_DIR = DATA_DIR / "photos"
 DB_PATH = DATA_DIR / "auc.db"
 

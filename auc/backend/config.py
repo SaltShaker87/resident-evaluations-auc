@@ -1,4 +1,23 @@
 import os
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Where the data lives
+#
+# AUC_DATA_DIR : the folder holding auc.db, photos/ and logs/. Defaults to
+#                auc/data next to the code, which is where it has always been.
+#
+#                Set it to put the data on a different disk, or to run the app
+#                against a scratch copy without touching the real database —
+#                which is what the tests do.
+#
+#                The database is not tracked in git, so a fresh clone starts
+#                with an empty one. Whatever this points at is the thing your
+#                backups are protecting; see auc/BACKUPS.md.
+# ---------------------------------------------------------------------------
+DATA_DIR: Path = Path(
+    os.environ.get("AUC_DATA_DIR") or Path(__file__).resolve().parent.parent / "data"
+)
 
 # ---------------------------------------------------------------------------
 # Where the app listens

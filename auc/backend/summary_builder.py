@@ -29,13 +29,12 @@ import os
 import re
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 import anyio
 import httpx
 
 import rag_retrieval
-from config import OLLAMA_URL, OLLAMA_MODEL
+from config import DATA_DIR, OLLAMA_URL, OLLAMA_MODEL
 
 # ---------------------------------------------------------------------------
 # Configuration — change the model here, in one place.
@@ -59,8 +58,7 @@ MAX_QUOTES: int = 3
 # Marks a stored summary as the structured format (vs. the older markdown blobs).
 REPORT_SCHEMA: str = "auc.summary.v1"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIR = BASE_DIR / "data" / "logs"
+LOG_DIR = DATA_DIR / "logs"
 VALIDATION_LOG = LOG_DIR / "summary_validation.log"
 
 # Status values a section can carry.

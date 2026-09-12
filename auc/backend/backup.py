@@ -18,10 +18,8 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from config import BACKUP_DIR, BACKUP_KEEP_DAYS
+from config import BACKUP_DIR, BACKUP_KEEP_DAYS, DATA_DIR
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
 PHOTOS_DIR = DATA_DIR / "photos"
 DB_PATH = DATA_DIR / "auc.db"
 
