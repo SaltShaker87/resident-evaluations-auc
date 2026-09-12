@@ -20,11 +20,15 @@ cd "$SCRIPT_DIR"
 # ---------------------------------------------------------------------------
 # Installing a unit file without throwing away your edits
 #
-# OLLAMA_MODEL and AUC_BACKUP_DIR live in the unit files and nowhere else, so
-# re-running this script used to silently revert them. install_unit carries
-# every Environment= line forward from the existing file — your value wins over
-# the generated default — while regenerating everything else, since the paths
-# have to change on a new machine. The previous file is kept alongside.
+# OLLAMA_MODEL, AUC_BACKUP_DIR and the backup schedule live in the unit files
+# and nowhere else, so re-running this script used to silently revert them.
+# install_unit carries forward every Environment= line and every scheduling key
+# (OnCalendar and friends) from the existing file — your value wins over the
+# generated default — while regenerating everything else, since the paths have
+# to change on a new machine. The previous file is kept alongside.
+#
+# The schedule matters on a desktop that is switched off overnight: a 02:00
+# OnCalendar never fires, and Persistent=true runs it at the next boot instead.
 #
 # The merge is done in Python because it is fiddly enough that shell string
 # surgery would be the wrong tool, and step 1 has already proved Python works.
@@ -51,6 +55,15 @@ existing = open(os.environ["EXISTING_PATH"], encoding="utf-8").read()
 
 ENV = re.compile(r"^Environment=([^=]+)=(.*)$")
 
+# Settings that exist only in the unit file, so regenerating them silently
+# discards a deliberate choice. Environment= holds OLLAMA_MODEL and
+# AUC_BACKUP_DIR; the scheduling keys hold when the backup runs, which is worth
+# changing on a machine that is switched off overnight.
+SCHEDULE_KEYS = (
+    "OnCalendar", "OnBootSec", "OnUnitActiveSec", "OnStartupSec",
+    "RandomizedDelaySec", "AccuracySec", "Persistent",
+)
+
 
 def env_map(text):
     out = {}
@@ -61,15 +74,57 @@ def env_map(text):
     return out
 
 
-mine, theirs = env_map(generated), env_map(existing)
+def schedule_map(text):
+    """key -> every line for it, since OnCalendar may legitimately repeat."""
+    out = {}
+    for line in text.splitlines():
+        for key in SCHEDULE_KEYS:
+            if line.startswith(f"{key}="):
+                out.setdefault(key, []).append(line)
+    return out
 
-out, kept = [], []
+
+mine, theirs = env_map(generated), env_map(existing)
+my_schedule, their_schedule = schedule_map(generated), schedule_map(existing)
+
+out, kept, emitted = [], [], set()
 for line in generated.splitlines():
     m = ENV.match(line)
     if m and m.group(1) in theirs and theirs[m.group(1)] != m.group(2):
         line = f"Environment={m.group(1)}={theirs[m.group(1)]}"
         kept.append(line)
+        out.append(line)
+        continue
+
+    scheduled = next((k for k in SCHEDULE_KEYS if line.startswith(f"{k}=")), None)
+    if scheduled:
+        if scheduled in emitted:
+            continue  # their lines were already written in place of ours
+        emitted.add(scheduled)
+        if their_schedule.get(scheduled, []) != my_schedule.get(scheduled, []):
+            out.extend(their_schedule[scheduled])
+            kept.extend(their_schedule[scheduled])
+            continue
     out.append(line)
+
+# Scheduling keys you added that this script does not generate at all — e.g.
+# an OnBootSec= to catch up after a machine that was switched off.
+extra_schedule = []
+for key, lines in their_schedule.items():
+    if key not in my_schedule:
+        extra_schedule.extend(lines)
+if extra_schedule:
+    kept.extend(extra_schedule)
+    anchor = next(
+        (i for i, line in enumerate(out)
+         if any(line.startswith(f"{k}=") for k in SCHEDULE_KEYS)),
+        None,
+    )
+    if anchor is None:
+        anchor = next((i for i, line in enumerate(out) if line.strip() == "[Install]"), len(out))
+        while anchor > 0 and not out[anchor - 1].strip():
+            anchor -= 1
+    out[anchor:anchor] = extra_schedule
 
 # Environment= lines you added that this script does not generate at all.
 extra = [f"Environment={k}={v}" for k, v in theirs.items() if k not in mine]
