@@ -1,0 +1,9 @@
+# ---------------------------------------------------------------------------
+# Development and checking tools. Not needed to run the app.
+#
+#   auc/backend/venv/bin/pip install -r auc/backend/requirements-dev.txt
+#
+# Then: bash auc/check.sh
+# ---------------------------------------------------------------------------
+pytest==8.3.3
+ruff==0.6.9
