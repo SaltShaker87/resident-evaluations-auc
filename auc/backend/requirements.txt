@@ -1,7 +1,20 @@
+# ---------------------------------------------------------------------------
+# Core application dependencies.
+#
+# Everything here is pure Python, so it installs on any processor family —
+# Intel/AMD or ARM. Nothing in this file touches the graphics card.
+#
+# The ACGME index layer lives in requirements-rag.txt, which is installed
+# separately so that a failure there costs you one feature rather than the
+# whole application. See SPARK_REPO_CHANGES.md item 2.
+# ---------------------------------------------------------------------------
 fastapi==0.115.0
 uvicorn==0.30.0
 httpx==0.27.0
 python-multipart==0.0.9
-aiofiles==24.1.0
-chromadb==1.5.9
 fpdf2==2.8.1
+
+# Imported directly by summary_builder.py (anyio.to_thread.run_sync). It also
+# arrives indirectly with FastAPI, but a dependency we import by name belongs
+# in our own list rather than relying on someone else's.
+anyio==4.4.0

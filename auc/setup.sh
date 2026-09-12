@@ -52,10 +52,41 @@ if [ ! -d "venv" ]; then
     echo "  ✓ Created Python virtual environment"
 fi
 
-# Install dependencies
+# Install dependencies in two stages.
+#
+# Stage 1 is the core application: pure Python, installs anywhere, and the app
+# cannot run without it — a failure here is fatal and set -e stops the script.
+#
+# Stage 2 is the ACGME index layer (chromadb). It is the only package with
+# compiled components, so it is the only one that can plausibly fail on an
+# unfamiliar processor. A failure here costs you summary generation and nothing
+# else, so it is reported as a warning and the install carries on.
 source venv/bin/activate
+
 pip install -q -r requirements.txt
-echo "  ✓ Python dependencies installed"
+echo "  ✓ Core Python dependencies installed"
+
+RAG_INSTALLED=1
+if pip install -q -r requirements-rag.txt; then
+    echo "  ✓ ACGME index layer installed (chromadb)"
+else
+    RAG_INSTALLED=0
+    echo ""
+    echo "  ⚠ The ACGME index layer (chromadb) failed to install."
+    echo ""
+    echo "    The rest of the app is unaffected: residents, notes, follow-ups,"
+    echo "    the CCC drawer and PDF export of approved summaries all work."
+    echo ""
+    echo "    What you lose is SUMMARY GENERATION. It will return a clear error"
+    echo "    rather than a worse summary — there is no fallback."
+    echo ""
+    echo "    Most likely cause: Python is older than 3.10, which is below the"
+    echo "    floor for onnxruntime's ARM builds. Yours is $(python3 --version)."
+    echo "    To retry on its own:"
+    echo "      cd $SCRIPT_DIR/backend && ./venv/bin/pip install -r requirements-rag.txt"
+    echo ""
+fi
+
 deactivate
 
 # ---- Step 3: Build frontend ----
@@ -160,6 +191,12 @@ echo "  ✓ Daily backup configured (writing to: $BACKUP_DIR)"
 echo "    To send backups offsite, point them at OneDrive — see auc/BACKUPS.md"
 
 echo ""
+if [ "$RAG_INSTALLED" -eq 0 ]; then
+    echo "  ⚠ Setup finished, but WITHOUT the ACGME index layer."
+    echo "    Summary generation will not work until chromadb installs."
+    echo "    Everything else is ready. See the warning in step 2 above."
+    echo ""
+fi
 echo "  ╔══════════════════════════════════════╗"
 echo "  ║   Setup complete!                     ║"
 echo "  ║                                       ║"

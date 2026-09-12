@@ -91,7 +91,7 @@ From the repo root, using the backend's Python environment:
 ```bash
 # one-time: pull the embedding model and install the dependency
 ollama pull qwen3-embedding:0.6b
-auc/backend/venv/bin/pip install chromadb   # already pinned in requirements.txt
+auc/backend/venv/bin/pip install -r auc/backend/requirements-rag.txt   # chromadb, pinned
 
 # (re)build the index after editing the Markdown files
 auc/backend/venv/bin/python auc/rag/build_index.py
