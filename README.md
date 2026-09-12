@@ -4,7 +4,7 @@ A local-first residency feedback management tool for internal medicine programs.
 
 ## What It Does
 
-- **Browse residents** — see all 35 residents at a glance, with photos, PGY year, and status
+- **Browse residents** — see every resident at a glance, with photos, PGY year, and status
 - **Quick-add notes** — jot observations during CCC meetings tagged with ACGME domains, sentiment (strength/concern), and priority
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
 - **AI-generated summaries** — press a button to draft a summary across all 21 ACGME sub-competencies using your local Ollama model, with a suggested milestone level and supporting quotes for each

@@ -63,6 +63,27 @@ if [ "$AGE_DAYS" -gt 7 ]; then
     warn "This backup is $AGE_DAYS days old. Check the nightly timer: systemctl --user list-timers | grep auc"
 fi
 
+# The nightly timer names files auc-backup-DATE_HHMMSS.zip; Settings → Download
+# Full Backup names them auc-backup-DATE.zip. Worth telling apart: verifying a
+# backup you made by hand says nothing about whether the automation works.
+if [[ "$(basename "$ZIP")" =~ _[0-9]{6}\.zip$ ]]; then
+    info "Made by the nightly timer"
+else
+    info "Made by hand (Settings → Download Full Backup)"
+fi
+
+# What the whole series looks like, not just the newest file.
+SERIES_DIR=$(dirname "$ZIP")
+SCHEDULED=$(find "$SERIES_DIR" -maxdepth 1 -name 'auc-backup-*_[0-9][0-9][0-9][0-9][0-9][0-9].zip' 2>/dev/null | wc -l)
+MANUAL=$(find "$SERIES_DIR" -maxdepth 1 -name 'auc-backup-*.zip' 2>/dev/null | wc -l)
+MANUAL=$((MANUAL - SCHEDULED))
+info "In $SERIES_DIR: $SCHEDULED from the timer, $MANUAL by hand"
+
+if [ "$SCHEDULED" -eq 0 ]; then
+    warn "No timer-written backup has ever landed here." \
+         "Check it: systemctl --user list-timers | grep auc — and run one now with: systemctl --user start auc-backup.service"
+fi
+
 # --- Extract it somewhere disposable ------------------------------------
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
