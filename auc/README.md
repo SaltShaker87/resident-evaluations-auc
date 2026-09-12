@@ -138,11 +138,24 @@ change the `Environment=` line, then
 - **Honour Ollama's JSON-constrained output.** A model that answers in prose
   instead marks every section `generation_failed`.
 - **Quote verbatim.** Every quote is checked against the comments routed to
-  that sub-competency, and a model that paraphrases has its quotes dropped.
-  Do not relax that validation to accommodate a model — it is what keeps
-  invented evidence out of a resident's record. Change the model instead.
+  that sub-competency, and a model that paraphrases has its quotes dropped —
+  and a section with no surviving quotes has its narrative discarded, so the
+  report comes back empty even though the model was working. Do not relax that
+  validation to accommodate a model; it is what keeps invented evidence out of
+  a resident's record. Change the model instead.
 
-Test both on a real resident with real notes before a meeting depends on it.
+Neither is on any model card, so test rather than assume:
+
+```bash
+bash auc/check-model.sh nemotron:latest
+```
+
+It runs three real sub-competency generations through the app's own prompt,
+parser and validator, reports on both requirements, times a section and
+extrapolates to a full 21-section run. It exits non-zero if the model cannot
+be used. Nothing is written to the database or the validation log.
+
+Then confirm on a real resident with real notes before a meeting depends on it.
 
 ## Configuration
 
@@ -172,6 +185,7 @@ Two commands, one for the machine and one for the code:
 bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
 bash auc/check.sh          # the code: lint and tests, backend and frontend
 bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
+bash auc/check-model.sh <model>   # the model: can it actually write summaries?
 ```
 
 `preflight.sh` prints a pass/fail line for every assumption the app makes and
@@ -230,6 +244,7 @@ auc/
 ├── preflight.sh      ← is this MACHINE healthy? models, index, services, disk
 ├── check.sh          ← is this CODE healthy? lint and tests, both halves
 ├── verify-backup.sh  ← would the newest backup actually restore?
+├── check-model.sh    ← can this model actually write summaries?
 ├── capture-environment.sh  ← write down how this machine is configured
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← you are here

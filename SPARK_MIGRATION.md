@@ -72,18 +72,25 @@ will still generate — agonisingly slowly, on the processor — and you may not
 immediately realise why. I cannot verify the current state of GB10 support
 from here; test it before you trust it (Phase C of the checklist).
 
-**2. Your custom fine-tune's *recipe* exists in exactly one place on Earth.**
-*(Revised: the weights, it turns out, do not — see Section 3 Q8.)* The plan is
-to re-download the weights from Hugging Face rather than copy `~/.ollama`
-across. That works for the weights. It does **not** carry the Modelfile — the
-system prompt, temperature, context length and template that make
-`clinical-reasoning:latest` the model you validated rather than just its base
-weights. Those live in `~/Modelfile-clinical` and `~/Modelfile-merged`, and
-`capture-environment.sh` copies their contents into the capture file. Keep it.
+**2. ~~Your custom fine-tune exists in exactly one place on Earth.~~ — this
+turned out not to be true, and the risk is retired.** Kept here because the
+reasoning generalises.
 
-The original wording, still true of the Modelfile alone:
-`clinical-reasoning:latest`, your Llama-3.2-3B fine-tune, lives inside
-`~/.ollama` on the old machine and nowhere else. You have said you intend to
+`clinical-reasoning:latest` is reconstructible: the Modelfile is on disk
+(`~/Modelfile-clinical`, `~/Modelfile-merged`, and in the capture file), and its
+base weights are the public `llama-3.2-3b-instruct`. Account access to Hugging
+Face is confirmed. It was only ever chosen because it was small enough to run
+on three 1080-class cards; on the Spark the plan is a much larger model.
+
+**The generalisable part:** an Ollama model is weights *plus* a Modelfile — the
+system prompt, temperature, context length and template. Re-downloading weights
+gets you half of it. Whatever model ends up writing summaries on the Spark, keep
+its Modelfile somewhere that is not the Spark. `capture-environment.sh` writes
+them all into one file; that file is the thing to keep.
+
+**What replaces this as a risk:** the new model is unproven against the two
+requirements in Section 5 (JSON output, verbatim quoting). Phase B now checks
+that in one command before anything depends on it. You have said you intend to
 move to a larger model such as Nemotron on the Spark — good — but until that
 larger model is set up and giving you summaries you are happy with, this
 fine-tune is your only proven generator. Copy it across *before* you
@@ -403,10 +410,29 @@ deadline for the Spark being ready.
     → `______________________________`
 30. Which model have you actually been generating summaries with since the rewrite, and roughly how long does a full 21-section run take?
     → `______________________________`
-31. **⚠ OUTSTANDING.** Is the recall QI study still collecting data? If so, when is the next CCC meeting — i.e. what is your real deadline for the Spark being ready?
-    → `______________________________`
-32. **⚠ OUTSTANDING.** Have you exported the study CSVs yet, and where did you put them?
-    → `______________________________`
+31. Is the recall QI study still collecting data? If so, when is the next CCC meeting — i.e. what is your real deadline for the Spark being ready?
+    → **Still collecting. No hard deadline; meetings are monthly, and the study
+    should finish around June 2027.**
+
+    Two consequences. First, there is no rush, so Section 6's advice to run both
+    machines in parallel until the Spark is proven costs nothing — take it.
+    Second, **cut over immediately after a meeting**, not before one: that gives
+    roughly four weeks before anything depends on the new machine.
+
+    It also means the `ccc_*` tables accumulate real research data every month,
+    which is what makes the backup drill below non-optional.
+32. Have you exported the study CSVs yet, and where did you put them?
+    → **Not yet.** Plan: a folder outside the repository, uploaded manually.
+    That is the right instinct — `*.csv` is gitignored, but outside the repo is
+    safer still.
+
+    ⚠ **Export them now rather than at the end.** Two reasons that have nothing
+    to do with the migration: it is the only way to find out the exporter works
+    on your real data rather than on test rows, and it gives months of research
+    data a copy that does not depend on the app or its database. Doing it after
+    each meeting is the right cadence. Check by eye that the files carry
+    `study_code` and no names — the exporter is written to raise rather than
+    emit an identifying file, but confirm it on real data.
 33. Does `auc/data/logs/summary_validation.log` exist on the old machine, and do you want its history kept?
     → `______________________________`
 
@@ -497,6 +523,15 @@ touching the application.
       *Observable:* available memory drops but does not approach zero. **If the machine becomes unresponsive, you have hit the memory problem described in Section 5.** Note the size of the largest model that loads comfortably; on 128 GB shared memory, leave generous headroom — the graphics hardware and the operating system are drawing from the same pool.
 - [ ] **Pull the embedding model — exact name matters.** `ollama pull qwen3-embedding:0.6b`
       *Observable:* `ollama list` shows `qwen3-embedding:0.6b`.
+- [ ] **⚠ Check the generation model can actually write summaries.**
+      `bash auc/check-model.sh <the model you intend to use>`
+      *Observable:* it reports ✓ on both hard requirements — JSON-constrained output and
+      verbatim quoting — and prints how long a full 21-section report would take. It exits
+      non-zero if the model is unusable.
+      **Do this before anything depends on the new model.** Neither requirement appears on
+      any model card, and the failure mode of the second one is a report that comes back
+      empty while the model appears to be working perfectly. If it fails, try another model;
+      do not weaken the validation.
 
 ---
 

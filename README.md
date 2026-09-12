@@ -60,8 +60,14 @@ model**; that choice is used from then on, and the dropdown beside the
 Generate Summary button overrides it for one run. The choice lives in your
 browser, so on a new computer you re-pick it once.
 
-`auc/README.md` explains the fallbacks, and the two things any replacement
-model has to do before you trust it with a summary.
+Not every model works, and neither requirement is on any model card, so test
+before trusting one with a meeting:
+
+```bash
+bash auc/check-model.sh nemotron:latest
+```
+
+`auc/README.md` explains what it checks and why.
 
 ## Checking That Everything Works
 
@@ -69,6 +75,7 @@ model has to do before you trust it with a summary.
 bash auc/preflight.sh      # the machine: models, index, services, disk, fonts
 bash auc/check.sh          # the code: lint and tests
 bash auc/verify-backup.sh  # the backup: does the newest one actually restore?
+bash auc/check-model.sh <model>   # the model: can it actually write summaries?
 ```
 
 Both print a line per check and say what to do about failures. `preflight.sh`
@@ -106,6 +113,7 @@ auc/
 ├── preflight.sh      ← is this MACHINE healthy?
 ├── check.sh          ← is this CODE healthy?
 ├── verify-backup.sh  ← would the newest backup actually restore?
+├── check-model.sh    ← can this model actually write summaries?
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← the fuller manual
 ├── backend/

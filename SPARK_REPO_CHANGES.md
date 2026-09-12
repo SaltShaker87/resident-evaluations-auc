@@ -789,6 +789,12 @@ another in mind. Leaving that unresolved means that in six months, when
 something is generating summaries with a model you did not expect, you will have
 no way to tell which setting won.
 
+> **Now one command.** `bash auc/check-model.sh <model>` runs three real
+> sub-competency generations through the app's own prompt, parser and validator
+> and reports on both requirements below, plus the time per section. It exits
+> non-zero if the model cannot be used. Written precisely because neither
+> requirement appears on any model card.
+
 **Two things any replacement model must be verified against**, because the new
 generator depends on both and neither is guaranteed:
 
@@ -801,8 +807,13 @@ generator depends on both and neither is guaranteed:
    accommodate a model — it is what keeps invented evidence out of a resident's
    record. Change the model instead.
 
-Verify both on a real resident with real notes before a meeting depends on it,
-and keep `clinical-reasoning:latest` as the documented fallback.
+Run `check-model.sh` first, then verify on a real resident with real notes
+before a meeting depends on it.
+
+`clinical-reasoning:latest` is no longer the irreplaceable fallback it was
+described as — its Modelfile is on disk and its base weights are the public
+llama-3.2-3b-instruct — but it is still the *proven* one, so get it working on
+the Spark before experimenting with anything larger.
 
 Also worth recording in the README: which model was used, why it was chosen, and
 what the fallback is if it stops working. Your fine-tune remains the known-good
