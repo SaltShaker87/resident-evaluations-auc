@@ -23,6 +23,15 @@ considerably shorter. Read it after this one.
 **Current machine:** Ubuntu, Intel/AMD, 32 GB RAM, three older graphics cards
 (one 1080 Ti, two 1080s).
 
+> **Revised after the `study-branch` merge.** This document was first written
+> against `main` at `ebf9ad0`. `study-branch` has since been merged in, bringing
+> the per-sub-competency summary generator, the CCC study instrumentation, and
+> the untracking of the runtime database. Three things changed materially and are
+> corrected throughout: the database is **no longer tracked in git**, grounding
+> failure is now a **visible error rather than a silent downgrade**, and
+> `chromadb` is now **required** for summaries rather than optional. Dependency
+> risk is unchanged — the merge added no packages.
+
 ---
 
 ## The one-paragraph summary
@@ -62,21 +71,43 @@ larger model is set up and giving you summaries you are happy with, this
 fine-tune is your only proven generator. Copy it across *before* you
 experiment, not after.
 
-**3. The search index fails silently, not loudly.** The ACGME reference index
-was built using the embedding model `qwen3-embedding:0.6b`. If that model is
-absent on the new machine, or if you rebuild the index with a different one,
-the application **does not show an error**. It quietly falls back to an older,
-weaker prompt that has none of the ACGME milestone grounding, and writes a
-single line to a log file you are not watching. Summaries keep appearing. They
-are just worse. This is the failure most likely to go unnoticed through an
-entire committee meeting, so it gets its own verification step.
+**3. Summaries now depend on the search index absolutely, not optionally.**
+This is the one risk the `study-branch` merge made *worse*, and it is worth
+understanding why, because it inverts the earlier advice.
 
-**4. The database in git is not your real database.** The file
-`auc/data/auc.db` is committed to the repository, but that copy is a stale
-snapshot — it predates the password feature and contains none of your real
-notes. The live database on the old machine has diverged from it. When you
-clone the repo onto the Spark you will get the stale one. Overwrite it with
-the live copy, and do not let a later `git pull` or `git checkout` undo that.
+The old generator sent one large prompt. If the ACGME index was unavailable it
+quietly fell back to a weaker, ungrounded prompt and wrote one line to a log —
+summaries kept appearing, just worse. That silent downgrade was the scariest
+failure in the system.
+
+The new generator does the opposite. `summary_builder.generate_report()` routes
+evidence through `rag_retrieval` first, and if that raises `RagUnavailable` it
+**emits an error to the browser and stops**. You will see a clear failure
+message instead of a quietly degraded report.
+
+That is a real improvement — the silent failure is gone from the path the
+interface actually uses. But the trade is that **no index means no summaries at
+all**. If `chromadb` will not install, or `qwen3-embedding:0.6b` is missing, or
+the index was never built, the summary feature is simply down. Everything else
+in the app — residents, notes, follow-ups, the CCC study drawer, PDF export of
+already-approved summaries — keeps working normally.
+
+So: get the index working in Phase G before you judge anything about summaries,
+and read failure mode 4 rather than assuming a quiet degradation.
+
+**4. The embedding model must be the one that built the index.** Still true,
+and still silent. A *missing* model now produces a visible error, but a
+*different* model does not: embeddings from two different models are not
+comparable, so retrieval returns confident nonsense and the summaries that
+follow are grounded in ACGME material picked essentially at random. Nothing
+errors. Keep it at `qwen3-embedding:0.6b`, or rebuild the index in the same
+breath as changing it.
+
+> **No longer a risk:** the stale database committed to git. Commit `f0c3b5a`
+> untracked `auc/data/auc.db`, so a fresh clone now arrives with **no** database
+> and the app creates an empty one on first run. You must still copy the live
+> database across (Phase E), but the trap of a plausible-looking stale file
+> silently winning is gone, and `git pull` can no longer fight your data.
 
 Everything below this point is ordinary work.
 
@@ -99,7 +130,7 @@ Everything below this point is ordinary work.
 | **Ollama** | The program that actually runs the AI model on the graphics hardware. Your app sends it text and gets a summary back. | System program (not a Python package) | **Unknown — verify on arrival.** ARM Linux builds have existed for some time, but I could not confirm GB10/Blackwell support from this session. | **Yes — this is the only CUDA-sensitive thing in the whole stack.** | Try NVIDIA's own container image for the Spark instead of the plain installer (the NVIDIA container runtime is preinstalled on DGX OS). Failing that, run it on the processor only — slow, but the app still works. As a last resort, keep pointing `OLLAMA_URL` at the old machine over the network while you sort it out. |
 | **`clinical-reasoning:latest`** | Your custom Llama-3.2-3B fine-tune — the model that currently writes the summaries. | Model file, not software | Model files themselves are processor-independent. Whether Ollama can *run* it on GB10 is the row above. | Indirectly — via Ollama | Copy `~/.ollama` wholesale from the old machine. If that is lost, it cannot be recreated without the original training output. Treat it as irreplaceable until proven otherwise. |
 | **`qwen3-embedding:0.6b`** | Turns text into numbers so the ACGME reference material can be searched by meaning. Used both to build the index and to look things up in it. | Model file, not software | Same as above | Indirectly — via Ollama | Pull it with `ollama pull qwen3-embedding:0.6b`. **It must be the same model that built the index** — a different one produces numbers on a different scale and retrieval quietly returns nonsense. If you ever change it, rebuild the index in the same breath. |
-| **`chromadb` 1.5.9** | Stores the ACGME reference material in a form that can be searched by meaning. The only Python package here with compiled parts. | **Includes compiled components** (a Rust core) | **Known-fine.** Confirmed published: `chromadb-1.5.9-cp39-abi3-manylinux_2_17_aarch64.whl`. | No — it is processor-only, never touches the graphics card | If it will not install, the app still runs: the summary generator catches the failure and falls back to its older prompt. You lose ACGME grounding, not the application. Next options: a newer chromadb version, or run chromadb in a container. |
+| **`chromadb` 1.5.9** | Stores the ACGME reference material in a form that can be searched by meaning. The only Python package here with compiled parts. | **Includes compiled components** (a Rust core) | **Known-fine.** Confirmed published: `chromadb-1.5.9-cp39-abi3-manylinux_2_17_aarch64.whl`. | No — it is processor-only, never touches the graphics card | **Since the `study-branch` merge this is required for summaries, not optional.** Without it the summary feature returns a visible error; the rest of the app is unaffected. Next options: a newer chromadb version, or run chromadb in a container. Do not plan around graceful degradation — that path is gone. |
 
 ## Row 2 — compiled packages pulled in behind chromadb
 
@@ -125,6 +156,7 @@ ARM Linux build exists for every one.
 | `uvicorn` 0.30.0 | The web server that actually listens on port 3000. | **Pure Python** | Known-fine | No | Won't break for ARM reasons |
 | `httpx` 0.27.0 | Makes outgoing web requests — this is how the app talks to Ollama. | **Pure Python** | Known-fine | No | Won't break for ARM reasons |
 | `python-multipart` 0.0.9 | Handles file uploads (resident photos, MedHub CSV files). | **Pure Python** | Known-fine | No | Won't break for ARM reasons |
+| `anyio` (not pinned) | Runs blocking work off the main thread; `summary_builder` imports it. **It is not listed in `requirements.txt`** — it arrives indirectly with FastAPI. | **Pure Python** | Known-fine | No | Won't break for ARM reasons. Noted in the change plan as a declaration gap, not a risk. |
 | `fpdf2` 2.8.1 | Builds the summary PDFs. | **Pure Python** | Known-fine | No | Won't break for ARM reasons. Its only environmental dependency is fonts — see the next table. |
 | `aiofiles` 24.1.0 | **Nothing. It is listed in `requirements.txt` but imported nowhere in the codebase.** | **Pure Python** | Known-fine | No | Harmless either way. Noted as a cleanup item in the change plan. |
 
@@ -168,7 +200,7 @@ by reading what the code opens, writes and expects.
 
 | What | Where it probably lives on the old machine | Why it is sensitive | How to move it |
 |---|---|---|---|
-| **The live database** | `auc/data/auc.db` — plus possibly `auc.db-wal` and `auc.db-shm` alongside it | Real resident names, and once you are using it for real, actual committee notes and summaries. Also holds your password hash and active login sessions. | **Stop the app first** (`systemctl --user stop auc`) so nothing is mid-write, then copy all three files if they exist. Better still, use the app's own **Settings → Download Full Backup** button, which makes a consistent copy safely even while running. |
+| **The live database** | `auc/data/auc.db` — plus possibly `auc.db-wal` and `auc.db-shm` alongside it | Real resident names, and once you are using it for real, actual committee notes and summaries. Also holds your password hash, active login sessions, and **all CCC study data** — the five `ccc_*` tables and each resident's `study_code`. |  **Stop the app first** (`systemctl --user stop auc`) so nothing is mid-write, then copy all three files if they exist. Better still, use the app's own **Settings → Download Full Backup** button, which makes a consistent copy safely even while running. |
 | **Resident photos** | `auc/data/photos/` | Identifiable photographs of named individuals. | Same transfer. The full-backup zip already includes these — it is the simplest correct route. |
 | **Your app password and recovery key** | Not in any file — in your head, or wherever you wrote the recovery key down | They unlock everything above. | These travel with the database. The hashes are inside `auc.db`, so once you have moved the database, the same password works on the Spark. **Bring the recovery key with you.** |
 | **Backup archives** | `~/auc-backups/`, or wherever `AUC_BACKUP_DIR` points — possibly inside a synced OneDrive folder | Each zip is a complete copy of the database and every photo. | Decide whether these move at all. You may prefer to leave the history on the old machine and start a fresh backup series on the Spark. |
@@ -180,6 +212,7 @@ by reading what the code opens, writes and expects.
 | What | Where it lives on the old machine | How to move it |
 |---|---|---|
 | **Ollama's model store — including your fine-tune** | `~/.ollama/` (models under `~/.ollama/models/`) | **Copy the whole directory.** It will be large — tens of gigabytes. This is the only copy of `clinical-reasoning:latest`. Verify afterwards with `ollama list` on the Spark. |
+| **The summary validation log** | `auc/data/logs/summary_validation.log` — created by the new generator | **Not covered by the backup**, which copies only `auc.db` and `photos/`. It records every quote dropped for failing verbatim validation and every narrative discarded as unsupported. For a QI study that is research provenance, so decide deliberately: copy it across, or accept starting a fresh log. Either is defensible; losing it without noticing is not. |
 | **The ACGME search index** | `auc/rag/chroma_db/` — deliberately excluded from git as a build artifact | **Do not copy it. Rebuild it** with `python auc/rag/build_index.py`. It contains a binary index; rebuilding on the target machine avoids any question of format or processor compatibility, takes about a minute, and is the supported path. Requires `qwen3-embedding:0.6b` to be pulled first. |
 | **The Python environment** | `auc/backend/venv/` | **Never copy this.** It contains programs compiled for Intel/AMD. Copying it onto ARM produces `exec format error`. `setup.sh` recreates it. |
 | **The installed browser packages** | `auc/frontend/node_modules/` and `auc/frontend/dist/` | **Never copy these either**, for the same reason. `setup.sh` rebuilds them. |
@@ -193,17 +226,27 @@ For completeness, so you do not go hunting: the ACGME reference documents
 `setup.sh`, and all application code are tracked in git and arrive with the
 clone.
 
-## The one trap in this section
+## The trap in this section — now largely disarmed
 
-`auc/data/auc.db` **is tracked in git**, so a fresh clone on the Spark gives
-you a database file immediately — one containing 44 residents and some
-placeholder notes. It looks right. It is not: it predates the password feature
-entirely and has none of your real content.
+This used to read as a warning. Commit `f0c3b5a` fixed it, so it is now a note.
 
-Copy the live database over the top of it. And be aware that because git is
-still tracking that path, a later `git pull` or `git checkout` can try to
-change the file underneath you. The change plan's very first item addresses
-this, and it is worth doing before the machine arrives.
+`auc/data/auc.db` **was** tracked in git, which meant a fresh clone handed you a
+plausible-looking but stale database — one predating the password feature, with
+none of your real content — and meant `git pull` could fight your live data.
+That file is now untracked, and the ignore rules were widened to cover the other
+artifacts that carry resident data in real use: MedHub CSV exports, backup
+`.zip` archives, exported summary PDFs, stray database copies, and the SQLite
+`-wal`/`-shm` sidecars that can hold rows not yet written to the main file.
+
+What this means on arrival day: **a fresh clone arrives with no database at
+all.** The app creates an empty one on first run. That is the correct behaviour
+and it makes Phase E unambiguous — if you skip copying the live database, you
+get an empty app asking you to create a password, which is obvious, rather than
+a populated-looking app running on stale data, which is not.
+
+One consequence worth knowing: because the database is no longer tracked,
+nothing in git will ever remind you it exists. Your backup is now the only thing
+standing between you and losing it. Section 6's restore drill is not optional.
 
 ---
 
@@ -291,6 +334,20 @@ one of them is easy to forget until the moment it is missing.
 28. Do you have the app password and recovery key written down somewhere you can reach on arrival day?
     → `______________________________`
 
+### The summary generator and the study
+
+29. Is `AUC_SUMMARY_MODEL` set anywhere? (Check the service file and `~/.bashrc`.) If unset, summaries use whatever `OLLAMA_MODEL` is.
+    → `______________________________`
+30. Which model have you actually been generating summaries with since the rewrite, and roughly how long does a full 21-section run take?
+    → `______________________________`
+31. Is the recall QI study still collecting data? If so, when is the next CCC meeting — i.e. what is your real deadline for the Spark being ready?
+    → `______________________________`
+32. Have you exported the study CSVs yet, and where did you put them?
+    → `______________________________`
+33. Does `auc/data/logs/summary_validation.log` exist on the old machine, and do you want its history kept?
+    → `______________________________`
+
+
 ---
 
 # Section 4 — Arrival-day checklist
@@ -302,7 +359,7 @@ given. Tick as you go.
 
 ## Phase 0 — Before the machine arrives (do this now)
 
-- [ ] **Answer Section 3.** All 28 blanks, while the old machine is in front of you.
+- [ ] **Answer Section 3.** All 33 blanks, while the old machine is in front of you.
 - [ ] **Take a full backup and verify it opens.** Settings → Download Full Backup. Then actually unzip it and confirm `auc.db` and `photos/` are inside.
       *Observable:* `unzip -l auc-backup-*.zip` lists `auc.db` and photo files.
 - [ ] **Prove the backup restores.** On the old machine, copy `auc.db` from the zip to a scratch folder and open it: `sqlite3 /tmp/check.db "select count(*) from residents"`.
@@ -431,6 +488,7 @@ touching the application.
       *Observable:* prints `Indexed 42 chunks into collection 'acgme_guidelines'` — expect 21 per source file, 42 total. A much smaller number means the reference documents were not read properly.
 - [ ] **Test that retrieval works.** `auc/backend/venv/bin/python auc/rag/test_query.py "missed a posterior circulation stroke"`
       *Observable:* three results come back, and the top one is plausibly about clinical reasoning or patient care — not a random professionalism entry. If results look arbitrary, the embedding model is probably not the one the index was built with.
+- [ ] **Do not proceed to Phase H expecting summaries to work until both of the above pass.** Since the `study-branch` merge, the summary generator treats a missing index as a hard error rather than falling back. No index means no summaries.
 
 ---
 
@@ -459,18 +517,31 @@ Do not consider the migration done until every one of these passes.
       *Observable:* the note is still there. (Proves the database is writable, not read-only from the copy.)
 - [ ] **The app can see Ollama.** Go to Settings.
       *Observable:* the "Default Ollama model" dropdown lists your models. **Not** "Ollama not reachable". Pick your model here — remember this setting lives in the browser, so do it on whichever browser you will actually use.
-- [ ] **Summary generation streams.** Open a resident with notes and generate a summary.
-      *Observable:* text appears progressively, word by word — not one lump after a long pause, and not an error.
-- [ ] **⚠ The grounding check — the important one.** While that summary generates, watch the log: `journalctl --user -u auc -f`
-      *Observable:* you want to see
-      `[generate-summary] RAG-grounded prompt for <id>: N competencies with evidence`
-      **If instead you see `RAG unavailable, using legacy prompt`, the ACGME grounding is not working** — the app is silently producing weaker summaries. Go back to Phase G. This is the failure that does not announce itself in the interface, so check it explicitly.
+- [ ] **Summary generation streams, section by section.** Open a resident with notes and generate a summary.
+      *Observable:* the report appears as **structured cards grouped by the six ACGME domains**, filling in one sub-competency at a time, with a progress counter climbing toward 21. Not a wall of markdown — that was the old generator. Expect a few minutes for a full run; you measured 3m11s on a 27-billion-parameter model.
+- [ ] **⚠ The grounding check.** The log to watch has moved. The new generator writes to its own file, not the service journal:
+      `tail -f auc/data/logs/summary_validation.log`
+      *Observable:* a line reading
+      `RUN START model=<model> resident=<name> comments=N total_subcompetencies=21 routing={...}`
+      The `routing=` map is the thing to read — it names each sub-competency that received evidence and how many comments went to it. **An empty or near-empty routing map means retrieval found nothing**, even though the run technically succeeded.
+      If retrieval is unavailable entirely you will now see `RETRIEVAL UNAVAILABLE` here **and a visible error in the browser** — the silent downgrade is gone. Go back to Phase G.
+- [ ] **Quote validation is working.** In the same log, look for the validation decisions.
+      *Observable:* dropped quotes and discarded narratives are logged in full. Seeing a few drops is healthy — it means unsupported text is being caught before it reaches you. Seeing *every* section discarded means the model is not returning usable JSON; see failure mode 12.
+- [ ] **Sections match the ontology exactly.** Count the cards in the finished report.
+      *Observable:* exactly 21 sub-competencies, every one from `acgme_ontology.json`, with no invented ones. Sections without evidence read "No evidence this cycle" rather than being absent or fabricated.
 - [ ] **Summary quality is comparable.** Generate a summary for the same resident on the old machine and read both side by side.
       *Observable:* the new one is at least as specific and as well-organised by competency domain. If you have switched to a larger model, it should be better — but confirm, do not assume.
 - [ ] **Approve and export a PDF.** Approve a summary, then use Export PDF.
       *Observable:* the PDF opens, and any dashes and curly quotes render properly rather than as `?` characters. (If they are wrong, the DejaVu font step did not take.)
+- [ ] **The CCC study instrumentation works.** Start a meeting from "Start CCC" in the header.
+      *Observable:* an amber banner appears at the top of every page. Open a resident and a pill appears bottom-right; `Ctrl+Shift+L` toggles the drawer. Tap **Spontaneous input** and reload the page — the value persists.
+- [ ] **The study queue survives the backend going away.** With a meeting open, stop the app (`systemctl --user stop auc`), record something in the drawer, then start the app again.
+      *Observable:* the pill shows writes waiting, and they land once the backend returns. Nothing is lost.
+- [ ] **Study exports are de-identified.** Download each of the three CSVs from the Study Data page.
+      *Observable:* they contain `study_code` values and **no resident names and no resident ids**. Open one and confirm by eye. The exporter is written to raise rather than emit an identifying file, but confirm it on the real data.
+- [ ] **Close the test meeting** so it does not pollute study data, and delete the test rows if you created any.
 - [ ] **Manual backup works.** Settings → Download Full Backup.
-      *Observable:* a zip downloads; `unzip -l` shows `auc.db` and photos inside.
+      *Observable:* a zip downloads; `unzip -l` shows `auc.db` and photos inside. The CCC study tables live inside `auc.db`, so they are covered — but note the validation log is **not** in the zip.
 - [ ] **The nightly backup is scheduled.** `systemctl --user list-timers | grep auc`
       *Observable:* `auc-backup.timer` appears with a next-run time.
 - [ ] **Run a backup now to prove it works, rather than waiting for 2 AM.** `systemctl --user start auc-backup.service && journalctl --user -u auc-backup.service -n 5`
@@ -586,34 +657,65 @@ Everything works — it is just doing the arithmetic the slow way.
 
 ---
 
-### 4. Summaries are noticeably worse, with no error anywhere
+### 4. Summary generation fails with "Could not route evidence"
 
 **What you see**
 
-Summaries generate normally and read plausibly, but they are vaguer than you
-remember — less organised by ACGME domain, no milestone-level suggestions, no
-grounding in the official descriptors.
+An error in the browser where the report should be, saying
+`Could not route evidence: ...`. No sections render at all.
 
-**What it means**
+**What it means in plain English**
 
-The ACGME search index is unavailable, and the application has quietly fallen
-back to its older, ungrounded prompt. **This is deliberate behaviour** — the
-code catches the failure so the feature never crashes on you mid-meeting — but
-the only notice is one line in a log.
+The ACGME search index is unavailable, so the generator stopped rather than
+producing an ungrounded report. **This is the new, better behaviour** — before
+the `study-branch` merge it would have quietly given you a weaker summary
+instead, which was far more dangerous. The error text after the colon names the
+real cause.
 
 **What to do**
 
-- Confirm it: `journalctl --user -u auc | grep RAG`. Look for
-  `RAG unavailable, using legacy prompt:` — the rest of that line names the
-  actual cause.
-- Common causes, in order:
-  - The index was never built → `python auc/rag/build_index.py`
-  - `qwen3-embedding:0.6b` is not pulled → `ollama pull qwen3-embedding:0.6b`
-  - The index was built with a *different* embedding model → pull the correct
-    one and rebuild
-  - `chromadb` did not install → see failure 5
-- Verify the fix by generating a summary and watching for the
-  `RAG-grounded prompt` line instead.
+Read the rest of the message, and check the log for `RETRIEVAL UNAVAILABLE`:
+`grep RETRIEVAL auc/data/logs/summary_validation.log`. Then, in order of
+likelihood:
+
+- The index was never built → `auc/backend/venv/bin/python auc/rag/build_index.py`
+- `qwen3-embedding:0.6b` is not pulled → `ollama pull qwen3-embedding:0.6b`
+- `chromadb` did not install → see failure 5
+- The collection exists but is empty → rebuild the index
+
+Verify the fix by generating a summary and watching for the `RUN START` line
+with a populated `routing=` map.
+
+---
+
+### 4b. Summaries generate, but the ACGME grounding is subtly wrong
+
+**What you see**
+
+The report renders, all 21 sections appear, but the assessments do not match the
+evidence — a comment about communication reasoned about under a patient-care
+sub-competency, milestone language that does not fit what was written.
+
+**What it means**
+
+Retrieval is working mechanically but returning the wrong material. The usual
+cause is an embedding model mismatch: the index was built with one model and is
+being searched with another. Numbers from two different models are not
+comparable, so the "nearest" match is effectively arbitrary. **Nothing errors** —
+this is the one silent failure that survives the merge.
+
+**What to do**
+
+- Confirm which model is configured versus which built the index. It is named in
+  `config.py`, `rag_retrieval.py`, `build_index.py` and `test_query.py` — change
+  plan item 5 exists to collapse those to one place.
+- Sanity-check retrieval directly:
+  `auc/backend/venv/bin/python auc/rag/test_query.py "missed a posterior circulation stroke"` —
+  the top hit should be plausibly about clinical reasoning, not a random
+  professionalism entry.
+- If in any doubt, rebuild: `ollama pull qwen3-embedding:0.6b` then
+  `python auc/rag/build_index.py`. Rebuilding costs a minute and removes the
+  question entirely.
 
 ---
 
@@ -792,9 +894,14 @@ error: Your local changes to the following files would be overwritten by merge:
 
 **What it means**
 
-The database file is tracked in git. Your live one has diverged from the
-committed copy, so git will not proceed. **Do not "fix" this by discarding your
+The database file was tracked in git, and your live one had diverged from the
+committed copy, so git would not proceed. **Do not "fix" this by discarding your
 changes** — your changes are your data.
+
+Since commit `f0c3b5a` the database is untracked, so this should no longer
+happen. It is kept here because the instinct it warns against — reaching for
+`git checkout .` or `git stash` to clear a complaint about a data file — is the
+dangerous part, and that instinct outlives the specific bug.
 
 **What to do**
 
@@ -804,8 +911,85 @@ Back up first, always:
 cp auc/data/auc.db ~/auc-db-safety-copy.db
 ```
 
-Then resolve it. The permanent fix — stop tracking the file — is the first item
-in the change plan, and is worth doing before you ever need it.
+Then resolve it.
+
+**This should no longer happen.** Commit `f0c3b5a` untracked the database, so git
+has no opinion about it any more. If you do see this error, something has
+re-added the file — check with
+`git ls-files auc/data/`, which should return nothing.
+
+---
+
+### 12. Every section comes back "generation failed" or "insufficient evidence"
+
+**What you see**
+
+The report renders all 21 cards, but most or all of them say
+`generation_failed`, or the narratives vanish and sections are marked
+insufficient evidence.
+
+**What it means in plain English**
+
+The model is not returning usable JSON. The new generator asks the model for a
+structured answer — a level, a narrative, and quotes — and validates it. Two
+things can cause wholesale failure:
+
+- **The model does not honour Ollama's JSON-constrained mode.** The generator
+  sets `format: json` (`USE_OLLAMA_JSON_FORMAT = True` in `summary_builder.py`).
+  Most models handle this; some do not, and produce prose or malformed output
+  instead.
+- **The model is quoting loosely.** Every quote must appear *verbatim*
+  (case-insensitive) in the comments routed to that sub-competency. A model that
+  paraphrases has all its quotes dropped, and when none survive, the narrative is
+  discarded too. That is the safety mechanism doing its job — unsupported text
+  never reaches you — but it looks like total failure.
+
+**This matters specifically for your plan to move to a larger model.** Nemotron
+or anything else new must be verified against both behaviours before you trust
+it in a meeting.
+
+**What to do**
+
+- Read the log — it records the actual model output:
+  `tail -50 auc/data/logs/summary_validation.log`
+- If the output is prose rather than JSON, set `USE_OLLAMA_JSON_FORMAT = False`
+  in `summary_builder.py` and retry; the defensive parser may cope where the
+  constraint does not.
+- If quotes are being dropped because the model paraphrases, that is a model
+  choice problem, not a bug. Try a different model. Do **not** relax the
+  validation — it is what keeps invented evidence out of a resident's record.
+- Fall back to `clinical-reasoning:latest`, which you have already verified
+  works with this pipeline.
+
+---
+
+### 13. A summary run takes far longer than expected, or appears to stall
+
+**What you see**
+
+The progress counter creeps — "3 of 21" — then seems to stop for minutes.
+
+**What it means**
+
+The generator makes **one model call per sub-competency with evidence**, up to
+21 of them, sequentially. Each call has a 600-second timeout
+(`OLLAMA_TIMEOUT_SECONDS` in `summary_builder.py`). A slow model, or one running
+on the processor rather than the graphics hardware, multiplies that across every
+section. It is not stalled; it is working through them.
+
+For reference: you measured a full 21-section run at 3 minutes 11 seconds on a
+27-billion-parameter model with graphics acceleration working.
+
+**What to do**
+
+- Confirm the graphics hardware is actually being used: `ollama ps` should say
+  100% GPU. If it says CPU, see failure 3 — that alone can turn three minutes
+  into an hour.
+- Confirm the model stays loaded between calls rather than being unloaded and
+  reloaded 21 times. `ollama ps` during a run should show it resident
+  throughout.
+- `num_ctx` is set to 8192. A larger context costs memory per call; on shared
+  memory that is worth watching with `free -h` during a run.
 
 ---
 
@@ -825,6 +1009,13 @@ have both moved forward in different directions. There is no merge tool for
 this — the application has no concept of reconciling two histories. You would
 have to re-type one side by hand.
 
+**For study data this is worse than inconvenient.** CCC session rows, the
+retrieval timings and the action-item recall checks are measurements of a
+specific meeting at a specific moment. Notes can be re-typed; a split
+measurement cannot be reconstructed, and half a cycle recorded on each machine
+may not be analysable at all. Decide which machine runs a given CCC meeting
+*before* the meeting starts, not during it.
+
 So: from the moment you start entering real notes on the Spark, treat the old
 machine as **read-only** — running, reachable, ready to take over, but not
 receiving new work. If you do need to fall back, you fall back to the database
@@ -838,8 +1029,10 @@ The Spark is proven when **all** of the following hold:
 
 - [ ] All residents present, at correct PGY levels, with photos rendering
 - [ ] A note added on the Spark survives a restart of the app
-- [ ] A summary generates, streaming, in time comparable to or better than the old machine
-- [ ] The log shows `RAG-grounded prompt` — not `RAG unavailable` — on every summary generated during the trial
+- [ ] A full 21-section summary completes, in time comparable to or better than the old machine, with the progress counter reaching 21
+- [ ] The validation log shows a `RUN START` line with a populated `routing=` map on every summary generated during the trial, and no `RETRIEVAL UNAVAILABLE`
+- [ ] Section ids match `acgme_ontology.json` exactly — 21 sections, none invented
+- [ ] Quote validation is dropping unsupported quotes rather than discarding every section wholesale (failure mode 12)
 - [ ] A summary approved and exported to PDF, with correct characters
 - [ ] The advancement wizard runs end to end (and its undo works)
 - [ ] A MedHub CSV import completes, if you use that feature
@@ -856,6 +1049,7 @@ The Spark is proven when **all** of the following hold:
 
 - [ ] **Two complete CCC meetings run on the Spark**, start to finish, with no fallback to the old machine. Not a rehearsal — actual use, with real notes, under real time pressure.
 - [ ] During those meetings, nothing needed a terminal to fix.
+- [ ] **If the recall QI study is still collecting:** both meetings captured study data correctly — sessions opened and closed, spontaneous-input tapped per resident, the retrieval clock recorded, and the three de-identified CSVs exported and inspected afterwards. A migration that silently breaks study capture costs you a data collection cycle you cannot re-run, so this is a hard gate, not a nice-to-have.
 
 **Quality — the silent-failure guard**
 

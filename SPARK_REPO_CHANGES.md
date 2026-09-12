@@ -4,9 +4,14 @@ Companion to [`SPARK_MIGRATION.md`](SPARK_MIGRATION.md). That document is about
 the *machine*. This one is about the *code* — the changes the repository itself
 needs so it runs well on the Spark.
 
-**Nothing in this document has been done.** No code, config or dependency file
-was touched in producing it. It is a plan for you to approve, schedule, or
-ignore item by item.
+> **Revised after the `study-branch` merge.** This plan was first written against
+> `main` at `ebf9ad0`. `study-branch` has since been merged, which **completed
+> item 1 outright** and changed the reasoning behind items 2 and 4. Those three
+> entries are rewritten below; the rest stand as originally written.
+
+**Everything still marked as a proposal is unbuilt.** Items 2–13 are a plan for
+you to approve, schedule, or ignore one at a time. Item 1 is now marked done
+because the merge did it.
 
 ## How this is ordered
 
@@ -18,8 +23,8 @@ turn a silent failure into a visible one.
 
 **Items 11–13 need the Spark in front of you** and are marked **ON ARRIVAL**.
 
-Within the DO NOW group, items are ordered by value-per-effort. If you only do
-three, do 1, 2 and 4.
+Within the DO NOW group, items are ordered by value-per-effort. **Item 1 is
+already done**, so if you only do three, do **2, 3 and 5**.
 
 ### Reading the entries
 
@@ -35,16 +40,47 @@ three, do 1, 2 and 4.
 
 ---
 
-## 1. Stop tracking the database file in git
+## 1. ~~Stop tracking the database file in git~~ — ✅ DONE
 
-**DO NOW · highest value · do this one first**
+**Completed by commit `f0c3b5a` on `study-branch`, now merged into `main`.**
+Nothing left to do. Kept here because the reasoning explains a class of bug
+worth recognising again, and because what was actually built went further than
+this plan proposed.
+
+**What was done, beyond the original proposal:**
+
+- `auc/data/auc.db` untracked with `git rm --cached`, so the existing `data/`
+  ignore rule finally applies. `git ls-files auc/data/` now returns nothing.
+- A **root** `.gitignore` was added. The original plan missed that
+  `auc/.gitignore` only governs paths under `auc/`, leaving the repository root
+  uncovered entirely.
+- The ignore rules were widened to the artifacts that actually carry resident
+  data in real use, which the original plan did not enumerate: MedHub CSV
+  exports, backup `.zip` archives, exported summary PDFs, stray database copies,
+  and the SQLite `-wal`/`-shm` sidecars that can hold rows not yet flushed to
+  the main file.
+- `.claude/settings.local.json` is now ignored in-repo rather than relying on a
+  machine-global ignore file, so it is covered on any other checkout.
+- Both ignore files carry the command that detects this class of bug:
+  `git ls-files | while read f; do git check-ignore -q "$f" && echo "$f"; done`
+
+**Verify it on your machine:** `git ls-files auc/data/` returns nothing, and
+`ls auc/data/auc.db` still finds the file.
+
+**One consequence to absorb:** a fresh clone now arrives with **no database**,
+and the app creates an empty one on first run. That is correct, and it makes
+arrival day less ambiguous — but it also means nothing in git will ever remind
+you the database exists. Your backup is now the only thing protecting it.
+
+<details>
+<summary>Original entry, kept for the reasoning</summary>
 
 **Goal.** Remove `auc/data/auc.db` from git's tracking so that git stops trying
 to manage your live database, while leaving the file itself exactly where it is
 on disk.
 
-**Why.** Right now git tracks a stale snapshot of your database — 44 residents,
-placeholder notes, no password configured. Your live database has diverged from
+**Why.** *(As it stood before the merge:)* git tracked a stale snapshot of your
+database — 44 residents, placeholder notes, no password configured. Your live database has diverged from
 it completely. Three separate problems follow from this:
 
 - On the Spark, a fresh clone hands you the stale file. It looks like a working
@@ -97,9 +133,11 @@ systemctl --user start auc
 If the file did vanish, copy the safety copy back. Take the safety copy even if
 you are confident. Especially if you are confident.
 
+</details>
+
 ---
 
-## 2. Split the dependencies so the app installs even if the index layer fails
+## 2. Split the dependencies so the core app installs without the index layer
 
 **DO NOW**
 
@@ -108,18 +146,28 @@ you are confident. Especially if you are confident.
 index layer second — treating a failure of the second as a warning rather than
 a fatal error.
 
-**Why.** `chromadb` is the only Python package here with compiled parts, which
-makes it the only one that can plausibly fail on ARM. I have confirmed an ARM
-build is published, so this probably will not happen — but the consequence of
-being wrong is out of proportion to the cause. Today, `setup.sh` runs with
-`set -e`, so a single failing package aborts the entire install: no web server,
-no database, no app at all, because an optional enhancement would not compile.
+**Why — and note this reasoning changed with the merge.** `chromadb` is the only
+Python package here with compiled parts, which makes it the only one that can
+plausibly fail on ARM. I confirmed an ARM build is published, so this probably
+will not happen — but the consequence of being wrong is out of proportion to the
+cause. Today, `setup.sh` runs with `set -e`, so a single failing package aborts
+the entire install: no web server, no database, no app at all.
 
-The application is already designed to survive this. `rag_retrieval.py` raises a
-specific `RagUnavailable` error and `app.py` catches it and falls back to the
-older prompt. The code is ready to degrade gracefully; only the installer is not.
+**The original justification no longer holds.** I first argued this was safe
+because the app degrades gracefully without the index — `rag_retrieval.py` raises
+`RagUnavailable` and the old generator fell back to an ungrounded prompt. The
+`study-branch` merge removed that fallback from the path the interface uses:
+`summary_builder.generate_report()` now emits an error and stops. So without
+`chromadb` you do not get weaker summaries, you get **no summaries**.
 
-This also makes the dependency list honest about what is core and what is an
+That makes the split *more* worth doing, not less, but for a different reason.
+The point is no longer "summaries keep working" — it is that a failure in the
+index layer should cost you **one feature, visibly**, rather than the entire
+installation. Residents, notes, follow-ups, the CCC study drawer and PDF export
+of already-approved summaries do not need `chromadb` at all, and none of them
+should be collateral damage.
+
+It also makes the dependency list honest about what is core and what is an
 enhancement — useful well beyond this migration.
 
 **Files touched.** `auc/backend/requirements.txt` (remove chromadb), new
@@ -129,9 +177,10 @@ tolerated and reported), `auc/rag/README.md` (update the install line).
 **Done when.**
 - Temporarily rename `requirements-rag.txt`, run `setup.sh`, and the app still
   starts and serves the login page
-- Generating a summary in that state logs `RAG unavailable, using legacy prompt`
-  and still produces a summary
-- Restore the file, re-run `setup.sh`, and grounding returns
+- In that state, residents, notes, follow-ups and the CCC drawer all work
+- Generating a summary in that state returns a **clear error naming the missing
+  index** — not a crash, not a blank page, and not a silently worse summary
+- Restore the file, re-run `setup.sh`, and summaries work again
 
 **Risk to the current machine. None.** Same packages, installed in two steps
 instead of one. Re-running `setup.sh` on the old machine is a no-op for anything
@@ -167,6 +216,9 @@ What it should check:
 - Whether the two required models are present by exact name: the generation
   model, and `qwen3-embedding:0.6b`
 - Whether the ACGME index directory exists and holds the expected 42 entries
+- Whether the embedding model configured matches the one that built the index
+  (once item 5 stamps it in)
+- Whether `auc/data/logs/` is writable, since the summary validator logs there
 - Whether the database exists, is readable, and has a password configured
 - How many photos exist, versus how many residents claim to have one
 - Whether DejaVu fonts are installed
@@ -185,50 +237,55 @@ with a message explaining what to do.
 
 ---
 
-## 4. Make the grounding status visible in the app
+## 4. Surface index health *before* a generation is attempted
 
-**DO NOW · fixes the failure most likely to go unnoticed**
+**DO NOW · scope reduced — the merge fixed most of this**
 
-**Goal.** Add an endpoint — `GET /api/rag/status` — that reports whether the
-ACGME grounding layer is working, and surface it in the Settings page next to
-the existing Ollama status. Record on each saved summary whether it was
-generated with grounding or with the fallback prompt.
+**Goal.** Add an endpoint — `GET /api/rag/status` — reporting whether the ACGME
+index is usable, and show it in Settings next to the existing Ollama status.
 
-**Why.** This is the single worst failure mode in the whole system, and it is
-worth being blunt about why. When the index is unavailable, the app keeps
-working. Summaries keep appearing. They are simply less good — no ACGME
-milestone grounding, no suggested levels, no competency structure. The only
-notice anywhere is one line written to a log file.
+**Why — most of the original problem is now solved.** I originally described the
+silent grounding downgrade as the single worst failure in the system: summaries
+kept appearing, quietly worse, with one line in a log as the only notice.
 
-You could run an entire clinical competency committee meeting on degraded
-summaries and never know. That is not a hypothetical after a migration: a
-missing embedding model, an unbuilt index, or a chromadb that did not install
-all produce exactly this, and all three are plausible on arrival day.
+`study-branch` fixed that. `generate_report()` now raises on `RagUnavailable` and
+emits an error event, so a broken index produces a visible failure in the
+browser, and the run logs `RETRIEVAL UNAVAILABLE` to
+`auc/data/logs/summary_validation.log`. Per-section status
+(`ok` / `no_evidence` / `insufficient_evidence` / `generation_failed`) is already
+recorded and rendered. The per-summary provenance I proposed is effectively
+there.
 
-The information already exists — `rag_retrieval.py` raises a descriptive error
-and `app.py` logs it. It just never reaches the screen.
+**What remains is narrower but still worth having:** you currently only discover
+the index is broken *by trying to generate a summary* — which, in a committee
+meeting, is the worst possible moment. A status line in Settings tells you
+beforehand, the same way the Ollama status line already does. On arrival day it
+also gives you a one-glance check that does not require generating a report.
 
-Recording it per summary matters too: if you later find a summary that reads
-poorly, you can tell whether it was a bad generation or an ungrounded one.
+**One silent failure does survive** and this endpoint should cover it: an
+embedding-model **mismatch**. A missing model now errors, but a *different* model
+returns confident nonsense with no error at all. If item 5 stamps the model name
+into the index, this endpoint can compare it against the configured one and say
+so.
 
 **Files touched.** `auc/backend/rag_retrieval.py` (a status-check function),
-`auc/backend/app.py` (the endpoint; store a flag on the summary row),
-`auc/frontend/src/api.js`, `auc/frontend/src/pages/Settings.jsx` (a status line),
-possibly `auc/frontend/src/pages/ResidentDetail.jsx` (a marker on ungrounded
-summaries). One small database column addition — `app.py` already has an
-established pattern for this in `init_db()`.
+`auc/backend/app.py` (the endpoint), `auc/frontend/src/api.js`,
+`auc/frontend/src/pages/Settings.jsx` (a status line). No database change needed
+any more — the merge already records per-section status.
 
 **Done when.**
 - `curl -s localhost:3000/api/rag/status` reports healthy, naming the collection
   and entry count
-- Settings shows a green line saying ACGME grounding is active
+- Settings shows a green line saying the ACGME index is ready
 - Rename `auc/rag/chroma_db` temporarily: the endpoint reports unavailable with
-  the reason, and Settings shows a clear warning — while summaries still generate
+  the reason and Settings shows a clear warning — **without** having to attempt
+  a generation to find out
+- With item 5 done, pointing `AUC_EMBED_MODEL` at a different model makes the
+  endpoint report a mismatch
 
-**Risk to the current machine. Very low.** Additive: a new endpoint, a new
-read-only display, and one nullable column. No existing path changes behaviour.
-Worth running on the old machine for a week before the migration — that way you
-arrive already knowing what healthy looks like.
+**Risk to the current machine. Very low.** Purely additive: one new endpoint and
+one read-only display. No existing path changes behaviour. Worth running on the
+old machine for a week first, so you arrive knowing what healthy looks like.
 
 ---
 
@@ -396,19 +453,27 @@ you are not about to need the app, not the morning of a committee meeting.
 
 **DO NOW · two minutes**
 
-**Goal.** Delete `aiofiles==24.1.0` from `requirements.txt`.
+**Goal.** Delete `aiofiles==24.1.0` from `requirements.txt`, and add `anyio`.
 
-**Why.** It is not imported anywhere in the codebase — I checked every Python
-file. It is a leftover. It installs cleanly on ARM so it causes no harm, but
-every unused entry in a dependency list is one more thing to investigate when
-something goes wrong on an unfamiliar machine, and one more thing that can
-break for reasons unrelated to anything you use.
+**Why.** Two opposite errors in the same file.
+
+`aiofiles` is pinned but **imported nowhere** — I checked every Python file. It
+is a leftover. It installs cleanly on ARM so it does no harm, but every unused
+entry is one more thing to investigate when something breaks on an unfamiliar
+machine.
+
+`anyio` is the reverse: `summary_builder.py` imports it directly (for
+`anyio.to_thread.run_sync`), but it is **not listed**. It works today only
+because FastAPI pulls it in as its own dependency. That is fragile in principle —
+a future FastAPI that stopped needing it would break summary generation with an
+import error that looks unrelated to anything you changed. It is pure Python, so
+there is no ARM risk; this is a correctness fix, not a migration risk.
 
 **Files touched.** `auc/backend/requirements.txt`.
 
-**Done when.** `grep -rn "aiofiles" auc/` returns only nothing, and the app
-starts and serves normally with the package absent from a freshly built
-environment.
+**Done when.** `grep -rn "aiofiles" auc/` returns nothing; `anyio` appears in
+`requirements.txt`; and the app starts, serves, and completes a full summary run
+from a freshly built environment.
 
 **Risk to the current machine. None**, on the evidence — nothing imports it. To
 be certain, remove it from a fresh environment rather than uninstalling it from
@@ -424,11 +489,19 @@ those are the file-handling paths where a hidden dependency would surface.
 **Goal.** Add a `.env.example` file listing every environment variable the app
 reads, with a comment for each, and reference it from the README.
 
-**Why.** There are seven of them — `OLLAMA_URL`, `OLLAMA_MODEL`,
-`OLLAMA_MAX_TOKENS`, `MEDHUB_API_URL`, `MEDHUB_API_KEY`, `AUC_BACKUP_DIR`,
-`AUC_BACKUP_KEEP_DAYS` — plus any added by items 5 and 7. They are documented
-across `config.py` comments, two READMEs, `BACKUPS.md` and the generated systemd
-files. On arrival day you want one list.
+**Why.** There are eight of them — `OLLAMA_URL`, `OLLAMA_MODEL`,
+`OLLAMA_MAX_TOKENS`, `AUC_SUMMARY_MODEL`, `MEDHUB_API_URL`, `MEDHUB_API_KEY`,
+`AUC_BACKUP_DIR`, `AUC_BACKUP_KEEP_DAYS` — plus any added by items 5 and 7. They
+are documented across `config.py` comments, two READMEs, `BACKUPS.md`, the top of
+`summary_builder.py` and the generated systemd files. On arrival day you want one
+list.
+
+`AUC_SUMMARY_MODEL` deserves particular attention: it is read in
+`summary_builder.py`, **not** `config.py`, and it silently overrides
+`OLLAMA_MODEL` for summary generation only. So the model writing your summaries
+can differ from the one named in the service file, with nothing pointing that
+out. That is exactly the kind of thing to have written down before you start
+swapping in a larger model on the Spark.
 
 It also makes a real discrepancy visible: `config.py` defaults `OLLAMA_MODEL` to
 `clinical-reasoning:latest`, while `setup.sh` writes `qwen3:8b` into the service
@@ -508,10 +581,26 @@ a proxy in front of it there, or you will lock yourself out of it.
 (Nemotron or otherwise), set it as the default in one place and update the
 documentation to match.
 
-**Why.** Three files currently name three different models. After the migration
-you will have a fourth in mind. Leaving that unresolved means that in six
-months, when something is generating summaries with a model you did not expect,
-you will have no way to tell which setting won.
+**Why.** Several files name several different models, and `AUC_SUMMARY_MODEL`
+can override all of them for summaries alone. After the migration you will have
+another in mind. Leaving that unresolved means that in six months, when
+something is generating summaries with a model you did not expect, you will have
+no way to tell which setting won.
+
+**Two things any replacement model must be verified against**, because the new
+generator depends on both and neither is guaranteed:
+
+1. **It must honour Ollama's JSON-constrained output** (`format: json`, set by
+   `USE_OLLAMA_JSON_FORMAT` in `summary_builder.py`). A model that returns prose
+   instead will mark every section `generation_failed`.
+2. **It must quote verbatim.** Every quote is checked against the comments
+   routed to that sub-competency; a model that paraphrases has its quotes
+   dropped and its narratives discarded. Do not relax that validation to
+   accommodate a model — it is what keeps invented evidence out of a resident's
+   record. Change the model instead.
+
+Verify both on a real resident with real notes before a meeting depends on it,
+and keep `clinical-reasoning:latest` as the documented fallback.
 
 Also worth recording in the README: which model was used, why it was chosen, and
 what the fallback is if it stops working. Your fine-tune remains the known-good
@@ -565,20 +654,34 @@ finish proving the migration first and tidy pins afterwards.
 
 | # | Change | When | Effort | Risk to old machine |
 |---|---|---|---|---|
-| 1 | Stop tracking the database in git | **Now** | Small | ⚠ Back up first — see the entry |
+| 1 | ~~Stop tracking the database in git~~ | ✅ **Done** (`f0c3b5a`) | — | — |
 | 2 | Split out the index dependency | **Now** | Small | None |
 | 3 | Preflight check script | **Now** | Medium | None |
-| 4 | Make grounding status visible | **Now** | Medium | Very low |
+| 4 | Surface index health before generating | **Now** | Small (reduced) | Very low |
 | 5 | Configurable embedding model | **Now** | Small | Low |
 | 6 | Bundle the web fonts | **Now** | Small | None |
 | 7 | Configurable host and port | **Now** | Small | Low |
 | 8 | Safer `setup.sh` | **Now** | Medium | Low — touches startup |
-| 9 | Drop unused `aiofiles` | **Now** | Trivial | None |
+| 9 | Fix `requirements.txt` (drop `aiofiles`, add `anyio`) | **Now** | Trivial | None |
 | 10 | Document environment variables | **Now** | Small | None |
 | 11 | HTTPS via Tailscale, bind to localhost | On arrival | Small | None (Spark only) |
 | 12 | Settle model configuration | On arrival | Small | Low |
 | 13 | Loosen version pins | On arrival, if forced | Varies | Medium |
 
-**If you do only three:** 1 (protects your data), 2 (stops one optional package
-from blocking the whole install), and 4 (turns the worst silent failure into a
-visible one).
+**If you do only three:** **2** (a failure in the index layer should cost one
+feature, not the whole install — and it now costs the whole summary feature),
+**3** (the preflight script, which pays for itself on arrival day), and **5**
+(the embedding-model mismatch is the one silent failure that survived the
+merge).
+
+## What the merge changed in this plan
+
+| | |
+|---|---|
+| Item 1 | Done, and done more thoroughly than proposed |
+| Item 2 | Still worth doing, opposite reasoning — no graceful degradation to rely on any more |
+| Item 4 | Scope cut; the silent downgrade is fixed, so this is now about knowing *before* you generate, plus catching an embedding mismatch |
+| Item 9 | Grew a second half: `anyio` is imported but undeclared |
+| Item 10 | Gained `AUC_SUMMARY_MODEL`, which overrides the model for summaries only |
+| Item 12 | Gained two hard verification requirements for any replacement model |
+| Everything else | Unchanged. The merge added **no** dependencies, so the ARM risk picture in `SPARK_MIGRATION.md` Section 1 stands exactly as written. |
