@@ -1,8 +1,8 @@
 """Query the local ACGME RAG index.
 
-Embeds a query string with the same qwen3-embedding:0.6b model used to build the
-index and prints the top 3 matching chunks with their id, name, domain, source,
-and distance score.
+Embeds a query string with the configured embedding model (config.EMBED_MODEL)
+and warns if that is not the model the index was built with. Prints the top 3
+matching chunks with their id, name, domain, source, and distance score.
 
     python auc/rag/test_query.py "resident missed a posterior circulation stroke"
 """
@@ -18,16 +18,12 @@ CHROMA_DIR = RAG_DIR / "chroma_db"
 BACKEND_DIR = RAG_DIR.parent / "backend"
 
 COLLECTION_NAME = "acgme_guidelines"
-EMBED_MODEL = "qwen3-embedding:0.6b"
+EMBED_MODEL_KEY = "embed_model"
 TOP_K = 3
 
+# Read both from the app's own config — see the note in build_index.py.
 sys.path.insert(0, str(BACKEND_DIR))
-try:
-    from config import OLLAMA_URL  # type: ignore
-except Exception:
-    import os
-
-    OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+from config import EMBED_MODEL, OLLAMA_URL  # noqa: E402
 
 
 def embed(text):
@@ -48,6 +44,17 @@ def main():
 
     chroma = chromadb.PersistentClient(path=str(CHROMA_DIR))
     collection = chroma.get_collection(COLLECTION_NAME)
+
+    # A mismatch here is the one failure that produces no error of its own:
+    # results come back looking perfectly plausible and are in fact arbitrary.
+    stamped = (collection.metadata or {}).get(EMBED_MODEL_KEY)
+    if stamped and stamped != EMBED_MODEL:
+        print(
+            f"WARNING: this index was built with '{stamped}' but you are "
+            f"searching it with '{EMBED_MODEL}'.\n"
+            f"         The results below are meaningless. Rebuild the index "
+            f"with: python auc/rag/build_index.py\n"
+        )
 
     results = collection.query(
         query_embeddings=[embed(query)],

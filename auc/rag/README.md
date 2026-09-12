@@ -28,7 +28,9 @@ to any third-party service. The only network calls are to the local Ollama serve
 - **`build_index.py`** — Splits each Markdown file into one chunk per
   sub-competency (h3 headings), tags each chunk with the canonical id/name/domain
   from `ontology/acgme_ontology.json`, embeds it with Ollama's
-  `qwen3-embedding:0.6b`, and stores everything in a ChromaDB `PersistentClient`
+  the configured embedding model (`config.EMBED_MODEL`, `AUC_EMBED_MODEL`,
+  default `qwen3-embedding:0.6b`), stamps that model name into the collection's
+  metadata, and stores everything in a ChromaDB `PersistentClient`
   at `chroma_db/` (collection `acgme_guidelines`). Idempotent — it deletes and
   recreates the collection on every run. Expect ~42 chunks (21 sub-competencies ×
   2 source files).

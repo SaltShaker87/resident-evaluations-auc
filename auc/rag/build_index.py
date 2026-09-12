@@ -3,7 +3,8 @@
 Reads the two ACGME markdown files in auc/rag/documents/, splits each into one
 chunk per sub-competency (h3 headings), tags each chunk with the canonical
 sub-competency id/name/domain from auc/rag/ontology/acgme_ontology.json, embeds
-each chunk with Ollama's qwen3-embedding:0.6b, and stores everything in a local
+each chunk with the configured embedding model (config.EMBED_MODEL, default
+qwen3-embedding:0.6b), and stores everything in a local
 ChromaDB PersistentClient at auc/rag/chroma_db/.
 
 Local-only: the only network call is to the local Ollama server. Idempotent: the
@@ -29,16 +30,18 @@ BACKEND_DIR = RAG_DIR.parent / "backend"
 
 DOCUMENT_FILES = ["acgme_im_milestones.md", "acgme_im_supplemental_guide.md"]
 COLLECTION_NAME = "acgme_guidelines"
-EMBED_MODEL = "qwen3-embedding:0.6b"
 
-# Reuse the app's Ollama base URL from config if available, else default.
+# Key under which the embedding model name is stamped into the collection's own
+# metadata, so rag_retrieval can tell whether the index it is about to search
+# was built with the model it is about to search with.
+EMBED_MODEL_KEY = "embed_model"
+
+# The Ollama URL and the embedding model come from the app's own config, and
+# only from there. A local fallback default would recreate exactly the drift
+# this is meant to prevent: an index built with one model, searched with
+# another, returning confident nonsense and no error.
 sys.path.insert(0, str(BACKEND_DIR))
-try:
-    from config import OLLAMA_URL  # type: ignore
-except Exception:
-    import os
-
-    OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+from config import EMBED_MODEL, OLLAMA_URL  # noqa: E402
 
 
 def load_ontology():
@@ -126,13 +129,15 @@ def main():
     except Exception:
         pass
     collection = chroma.create_collection(
-        name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+        name=COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine", EMBED_MODEL_KEY: EMBED_MODEL},
     )
     collection.add(
         ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas
     )
 
     print(f"Indexed {len(ids)} chunks into collection '{COLLECTION_NAME}' at {CHROMA_DIR}")
+    print(f"Embedding model: {EMBED_MODEL} (stamped into the index)")
     print("Breakdown by source file:")
     for filename in DOCUMENT_FILES:
         print(f"  {filename}: {source_counts[filename]} chunks")

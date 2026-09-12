@@ -22,16 +22,17 @@ to the legacy (ungrounded) prompt with a clear message instead of crashing.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import httpx
 
-try:
-    from config import OLLAMA_URL  # type: ignore
-except Exception:  # pragma: no cover - config should always be importable in app
-    import os
+# config.py sits next to this file. Import it for real rather than keeping a
+# fallback default for EMBED_MODEL here: two defaults is how an index ends up
+# built with one model and searched with another.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+from config import EMBED_MODEL, OLLAMA_URL  # noqa: E402
 
 # --- Paths / constants -----------------------------------------------------
 RAG_DIR = Path(__file__).resolve().parent.parent / "rag"
@@ -39,7 +40,11 @@ ONTOLOGY_FILE = RAG_DIR / "ontology" / "acgme_ontology.json"
 CHROMA_DIR = RAG_DIR / "chroma_db"
 
 COLLECTION_NAME = "acgme_guidelines"
-EMBED_MODEL = "qwen3-embedding:0.6b"
+
+# Key under which build_index.py stamps the embedding model into the collection
+# metadata, so a build/search mismatch can be detected rather than silently
+# returning arbitrary results.
+EMBED_MODEL_KEY = "embed_model"
 MILESTONES_SOURCE = "acgme_im_milestones.md"
 SUPPLEMENT_SOURCE = "acgme_im_supplemental_guide.md"
 
