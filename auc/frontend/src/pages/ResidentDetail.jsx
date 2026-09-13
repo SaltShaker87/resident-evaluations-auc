@@ -9,7 +9,7 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
-  exportSummaryPdf,
+  exportSummaryPdf, getAdvisors,
 } from '../api';
 import Avatar from '../components/Avatar';
 import SummaryReport from '../components/SummaryReport';
@@ -704,21 +704,24 @@ export default function ResidentDetail({ showToast }) {
   const [notes, setNotes] = useState([]);
   const [followups, setFollowups] = useState([]);
   const [summaries, setSummaries] = useState([]);
+  const [advisors, setAdvisors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
-      const [r, n, f, s] = await Promise.all([
+      const [r, n, f, s, a] = await Promise.all([
         getResident(id),
         getNotes(id),
         getResidentFollowups(id, true),
         getSummaries(id),
+        getAdvisors(),
       ]);
       setResident(r);
       setNotes(n);
       setFollowups(f);
       setSummaries(s);
+      setAdvisors(a);
     } catch {
       showToast('Failed to load resident data');
     }
@@ -736,6 +739,17 @@ export default function ResidentDetail({ showToast }) {
       loadAll();
     } catch {
       showToast('Failed to upload photo');
+    }
+  };
+
+  const handleAdvisorChange = async (e) => {
+    const advisorId = e.target.value || null;
+    try {
+      await updateResident(id, { advisor_id: advisorId });
+      showToast(advisorId ? 'Advisor assigned' : 'Advisor cleared');
+      loadAll();
+    } catch (err) {
+      showToast(err.message || 'Failed to update advisor');
     }
   };
 
@@ -810,6 +824,25 @@ export default function ResidentDetail({ showToast }) {
             <div className="profile-field">
               <span className="profile-field__label">Interests</span>
               <span className="profile-field__value">{resident.interests || 'None'}</span>
+            </div>
+            <div className="profile-field">
+              <span className="profile-field__label">Advisor</span>
+              <select
+                className="form-select"
+                style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                value={resident.advisor_id ?? ''}
+                onChange={handleAdvisorChange}
+              >
+                <option value="">Unassigned</option>
+                {/* An inactive advisor is listed only if already assigned, and can't be re-picked. */}
+                {advisors
+                  .filter((a) => a.active || a.id === resident.advisor_id)
+                  .map((a) => (
+                    <option key={a.id} value={a.id} disabled={!a.active}>
+                      {a.name}{a.active ? '' : ' (inactive)'}
+                    </option>
+                  ))}
+              </select>
             </div>
           </div>
         </div>

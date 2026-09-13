@@ -165,6 +165,16 @@ def init_db():
                 created_at INTEGER NOT NULL,
                 expires_at INTEGER NOT NULL
             );
+
+            -- Faculty advisors, for organizing who presents whom at CCC and QI.
+            -- Not evidence: nothing here is read by summary generation.
+            CREATE TABLE IF NOT EXISTS advisors (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         conn.executescript(ccc.SCHEMA_SQL)
         conn.executescript(retrieval_engine.SCHEMA_SQL)
@@ -175,6 +185,9 @@ def init_db():
             "ALTER TABLE notes ADD COLUMN source TEXT",
             "ALTER TABLE residents ADD COLUMN is_prelim INTEGER DEFAULT 0",
             "ALTER TABLE residents ADD COLUMN prelim_specialty TEXT",
+            # Deactivating an advisor keeps their assignments; deleting one
+            # sends their residents back to Unassigned.
+            "ALTER TABLE residents ADD COLUMN advisor_id TEXT REFERENCES advisors(id) ON DELETE SET NULL",
         ] + ccc.COLUMN_MIGRATIONS + ccc.POST_MIGRATION_SQL:
             try:
                 conn.execute(col_sql)
@@ -215,6 +228,14 @@ class ResidentUpdate(BaseModel):
     track: Optional[str] = None
     is_prelim: Optional[bool] = None
     prelim_specialty: Optional[str] = None
+    advisor_id: Optional[str] = None
+
+class AdvisorCreate(BaseModel):
+    name: str
+
+class AdvisorUpdate(BaseModel):
+    name: Optional[str] = None
+    active: Optional[bool] = None
 
 class BulkResidentImport(BaseModel):
     residents: List[ResidentCreate]
@@ -408,7 +429,8 @@ def get_resident(resident_id: str):
 def update_resident(resident_id: str, updates: ResidentUpdate):
     fields = []
     values = []
-    for field, val in updates.dict(exclude_unset=True).items():
+    changes = updates.dict(exclude_unset=True)
+    for field, val in changes.items():
         if field in ("active", "is_prelim"):
             val = 1 if val else 0
         fields.append(f"{field} = ?")
@@ -417,7 +439,16 @@ def update_resident(resident_id: str, updates: ResidentUpdate):
         raise HTTPException(status_code=400, detail="No fields to update")
     fields.append("updated_at = datetime('now')")
     values.append(resident_id)
+    advisor_id = changes.get("advisor_id")
     with db_connection() as conn:
+        # Checked here rather than left to the foreign key, which would answer
+        # an unknown id with a 500. null (Unassigned) needs no check.
+        if advisor_id is not None:
+            advisor = conn.execute(
+                "SELECT active FROM advisors WHERE id = ?", (advisor_id,)
+            ).fetchone()
+            if not advisor or not advisor["active"]:
+                raise HTTPException(status_code=400, detail="No active advisor with that id")
         conn.execute(
             f"UPDATE residents SET {', '.join(fields)} WHERE id = ?",
             values
@@ -429,6 +460,61 @@ def delete_resident(resident_id: str):
     with db_connection() as conn:
         conn.execute("DELETE FROM residents WHERE id = ?", (resident_id,))
     return {"message": "Resident deleted"}
+
+# ---------------------------------------------------------------------------
+# Advisors
+# ---------------------------------------------------------------------------
+
+@app.get("/api/advisors")
+def list_advisors():
+    """Every advisor, inactive ones included, so a resident whose advisor has
+    been deactivated can still show who it is."""
+    with db_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM advisors ORDER BY active DESC, name COLLATE NOCASE"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+@app.post("/api/advisors")
+def create_advisor(advisor: AdvisorCreate):
+    name = advisor.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Advisor name is required")
+    aid = str(uuid.uuid4())[:8]
+    with db_connection() as conn:
+        conn.execute("INSERT INTO advisors (id, name) VALUES (?, ?)", (aid, name))
+    return {"id": aid, "message": "Advisor created"}
+
+@app.put("/api/advisors/{advisor_id}")
+def update_advisor(advisor_id: str, updates: AdvisorUpdate):
+    changes = updates.dict(exclude_unset=True)
+    fields = []
+    values = []
+    if "name" in changes:
+        name = (changes["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Advisor name is required")
+        fields.append("name = ?")
+        values.append(name)
+    if "active" in changes:
+        fields.append("active = ?")
+        values.append(1 if changes["active"] else 0)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    fields.append("updated_at = datetime('now')")
+    values.append(advisor_id)
+    with db_connection() as conn:
+        cur = conn.execute(f"UPDATE advisors SET {', '.join(fields)} WHERE id = ?", values)
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Advisor not found")
+    return {"message": "Advisor updated"}
+
+@app.delete("/api/advisors/{advisor_id}")
+def delete_advisor(advisor_id: str):
+    """Remove an advisor. Their residents become Unassigned (ON DELETE SET NULL)."""
+    with db_connection() as conn:
+        conn.execute("DELETE FROM advisors WHERE id = ?", (advisor_id,))
+    return {"message": "Advisor deleted"}
 
 ALLOWED_PHOTO_TYPES = {
     ".jpg": "image/jpeg",
