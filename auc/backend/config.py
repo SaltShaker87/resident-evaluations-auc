@@ -81,6 +81,32 @@ OLLAMA_MAX_TOKENS: int = int(os.environ.get("OLLAMA_MAX_TOKENS", "2048"))
 EMBED_MODEL: str = os.environ.get("AUC_EMBED_MODEL", "qwen3-embedding:0.6b")
 
 # ---------------------------------------------------------------------------
+# The NVIDIA Nemotron retrieval engine
+#
+# The alternative to the Ollama embedding model above: NVIDIA's Nemotron
+# embedding and reranking models, each running as a local container (a "NIM").
+# Which engine is in use is chosen in Settings, not here. These only say where
+# the containers are and which models they serve. start-nemotron.sh starts
+# them on these ports, reachable from this machine only.
+#
+# AUC_NIM_EMBED_URL   / AUC_NIM_EMBED_MODEL  : the embedding container. Like
+#                       AUC_EMBED_MODEL, the model is stamped into its index,
+#                       so changing it means rebuilding:
+#                         python auc/rag/build_index.py --engine nemotron
+# AUC_NIM_RERANK_URL  / AUC_NIM_RERANK_MODEL : the reranking container.
+# AUC_RERANK_CANDIDATES : how many index entries the reranker chooses among
+#                         for a comment that matched no keyword.
+#
+# Never point these at build.nvidia.com or any other hosted endpoint. That
+# would send resident comments off this machine.
+# ---------------------------------------------------------------------------
+NIM_EMBED_URL: str = os.environ.get("AUC_NIM_EMBED_URL", "http://localhost:8001")
+NIM_EMBED_MODEL: str = os.environ.get("AUC_NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
+NIM_RERANK_URL: str = os.environ.get("AUC_NIM_RERANK_URL", "http://localhost:8002")
+NIM_RERANK_MODEL: str = os.environ.get("AUC_NIM_RERANK_MODEL", "nvidia/llama-nemotron-rerank-vl-1b-v2")
+RERANK_CANDIDATES: int = int(os.environ.get("AUC_RERANK_CANDIDATES", "10"))
+
+# ---------------------------------------------------------------------------
 # MedHub API — fill these in once API documentation is obtained.
 # Set via environment variables or edit the defaults below.
 #

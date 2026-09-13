@@ -1,0 +1,62 @@
+# ============================================================
+# The NVIDIA Nemotron retrieval engine: two local containers
+#
+# Start them with:
+#   bash auc/start-nemotron.sh
+#
+# rather than calling docker compose directly. The script creates the cache
+# folders, sets the user the containers run as, and waits until both answer;
+# NIM_UID and NIM_CACHE_DIR below are deliberately required so that a bare
+# `docker compose up` stops and says so instead of half-working.
+#
+# Both are bound to 127.0.0.1: they serve this machine's AUC and nothing else.
+# Resident comments are sent to them, so they must never be reachable from the
+# network, and AUC must never be pointed at NVIDIA's hosted endpoints instead.
+#
+# The images come from NVIDIA's registry (nvcr.io), which needs a one-time
+# `docker login nvcr.io` with an NGC API key. The model weights download on the
+# first start into NIM_CACHE_DIR and are reused after that, so a restart,
+# including after a reboot, needs no network and no key.
+#
+# The host ports must match AUC_NIM_EMBED_URL and AUC_NIM_RERANK_URL
+# (backend/config.py). Change both together or neither.
+# ============================================================
+
+x-nim: &nim
+  runtime: nvidia
+  shm_size: 16gb
+  user: "${NIM_UID:?start these with: bash auc/start-nemotron.sh}"
+  environment:
+    # Passed through from the shell only if set; needed for the first
+    # weights download, never stored here.
+    - NGC_API_KEY
+    - HF_TOKEN
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  restart: unless-stopped
+
+services:
+  nemotron-embed:
+    <<: *nim
+    image: nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3
+    container_name: nemotron-embed
+    volumes:
+      - "${NIM_CACHE_DIR:?start these with: bash auc/start-nemotron.sh}/nemotron-embed/cache:/opt/cache"
+      - "${NIM_CACHE_DIR:?start these with: bash auc/start-nemotron.sh}/nemotron-embed/weights:/model"
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  nemotron-rerank:
+    <<: *nim
+    image: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3
+    container_name: nemotron-rerank
+    volumes:
+      - "${NIM_CACHE_DIR:?start these with: bash auc/start-nemotron.sh}/nemotron-rerank/cache:/opt/cache"
+      - "${NIM_CACHE_DIR:?start these with: bash auc/start-nemotron.sh}/nemotron-rerank/weights:/model"
+    ports:
+      - "127.0.0.1:8002:8000"

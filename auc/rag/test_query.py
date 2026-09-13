@@ -1,76 +1,100 @@
 """Query the local ACGME RAG index.
 
-Embeds a query string with the configured embedding model (config.EMBED_MODEL)
-and warns if that is not the model the index was built with. Prints the top 3
-matching chunks with their id, name, domain, source, and distance score.
+Embeds a query string with a retrieval engine's embedder and warns if that is not
+the model the index was built with. Prints the top 3 matching chunks with their
+id, name, domain, source, and distance score. With the NVIDIA Nemotron engine it
+also prints the order the reranker puts the shortlist in, which is the order the
+app actually routes by.
 
     python auc/rag/test_query.py "resident missed a posterior circulation stroke"
+    python auc/rag/test_query.py --engine nemotron "resident missed a posterior circulation stroke"
+
+Without --engine it uses the engine the app is set to.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
-import chromadb
-import httpx
-
 RAG_DIR = Path(__file__).resolve().parent
-CHROMA_DIR = RAG_DIR / "chroma_db"
 BACKEND_DIR = RAG_DIR.parent / "backend"
 
-COLLECTION_NAME = "acgme_guidelines"
-EMBED_MODEL_KEY = "embed_model"
 TOP_K = 3
 
-# Read both from the app's own config — see the note in build_index.py.
+# Everything comes from the app's own modules — see the note in build_index.py.
 sys.path.insert(0, str(BACKEND_DIR))
-from config import EMBED_MODEL, OLLAMA_URL  # noqa: E402
+import rag_retrieval  # noqa: E402
+import retrieval_engine  # noqa: E402
 
 
-def embed(text):
-    """Return the embedding vector for a single string via Ollama /api/embed."""
-    with httpx.Client(timeout=120.0) as http:
-        r = http.post(
-            f"{OLLAMA_URL}/api/embed",
-            json={"model": EMBED_MODEL, "input": text},
-        )
-        r.raise_for_status()
-        return r.json()["embeddings"][0]
+def print_match(rank, meta, detail):
+    print(f"\n{rank}. [{meta['id']}] {meta['name']}")
+    print(f"   domain:   {meta['domain']}")
+    print(f"   source:   {meta['source']}")
+    print(f"   {detail}")
 
 
 def main():
-    if len(sys.argv) < 2:
-        sys.exit('Usage: python test_query.py "your query string"')
-    query = " ".join(sys.argv[1:])
+    parser = argparse.ArgumentParser(description="Search the ACGME index the way the app does.")
+    parser.add_argument(
+        "--engine",
+        choices=rag_retrieval.ENGINES,
+        default=None,
+        help="which engine's index to search (default: the one the app is set to)",
+    )
+    parser.add_argument("query", nargs="+", help="the text to look up")
+    args = parser.parse_args()
 
-    chroma = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    collection = chroma.get_collection(COLLECTION_NAME)
+    engine = args.engine or retrieval_engine.resolve(retrieval_engine.stored_on_disk())
+    query = " ".join(args.query)
+
+    try:
+        collection = rag_retrieval.open_collection(engine)
+    except rag_retrieval.RagUnavailable as e:
+        sys.exit(str(e))
 
     # A mismatch here is the one failure that produces no error of its own:
     # results come back looking perfectly plausible and are in fact arbitrary.
-    stamped = (collection.metadata or {}).get(EMBED_MODEL_KEY)
-    if stamped and stamped != EMBED_MODEL:
+    stamped = (collection.metadata or {}).get(rag_retrieval.EMBED_MODEL_KEY)
+    configured = rag_retrieval.embedder(engine)
+    if stamped and stamped != configured:
         print(
             f"WARNING: this index was built with '{stamped}' but you are "
-            f"searching it with '{EMBED_MODEL}'.\n"
+            f"searching it with '{configured}'.\n"
             f"         The results below are meaningless. Rebuild the index "
-            f"with: python auc/rag/build_index.py\n"
+            f"with: {rag_retrieval.rebuild_hint(engine)}\n"
         )
 
-    results = collection.query(
-        query_embeddings=[embed(query)],
-        n_results=TOP_K,
-    )
+    try:
+        vector = rag_retrieval.embed([query], engine, "query")[0]
+    except rag_retrieval.RagUnavailable as e:
+        sys.exit(str(e))
 
+    shortlist = rag_retrieval.RERANK_CANDIDATES if engine == rag_retrieval.NEMOTRON else TOP_K
+    results = collection.query(query_embeddings=[vector], n_results=max(TOP_K, shortlist))
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
+    documents = results["documents"][0]
 
-    print(f'Query: {query}\n')
-    print(f"Top {len(metadatas)} matches:")
-    for rank, (meta, distance) in enumerate(zip(metadatas, distances, strict=False), start=1):
-        print(f"\n{rank}. [{meta['id']}] {meta['name']}")
-        print(f"   domain:   {meta['domain']}")
-        print(f"   source:   {meta['source']}")
-        print(f"   distance: {distance:.4f}")
+    print(f"Engine: {rag_retrieval.LABELS[engine]}")
+    print(f"Query:  {query}\n")
+    print(f"Top {min(TOP_K, len(metadatas))} by embedding distance:")
+    for rank, (meta, distance) in enumerate(
+        zip(metadatas[:TOP_K], distances[:TOP_K], strict=False), start=1
+    ):
+        print_match(rank, meta, f"distance: {distance:.4f}")
+
+    if engine == rag_retrieval.NEMOTRON:
+        try:
+            order = rag_retrieval.rerank(query, documents)
+        except rag_retrieval.RagUnavailable as e:
+            sys.exit(str(e))
+        print(
+            f"\nTop {min(TOP_K, len(order))} after reranking the {len(documents)}-entry "
+            f"shortlist (the order the app routes by):"
+        )
+        for rank, index in enumerate(order[:TOP_K], start=1):
+            print_match(rank, metadatas[index], f"was #{index + 1} by embedding distance")
 
 
 if __name__ == "__main__":

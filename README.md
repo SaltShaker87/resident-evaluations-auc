@@ -8,6 +8,7 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Quick-add notes** — jot observations during CCC meetings tagged with ACGME domains, sentiment (strength/concern), and priority
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
 - **AI-generated summaries** — press a button to draft a summary across all 21 ACGME sub-competencies using your local Ollama model, with a suggested milestone level and supporting quotes for each
+- **Grounded in the ACGME milestones** — each note is matched to the sub-competencies it is about, by keyword or by searching the ACGME reference material; on an NVIDIA DGX Spark that search uses NVIDIA's Nemotron models, elsewhere Ollama (see *Retrieval Engine* below)
 - **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; sections whose quotes don't check out are withheld
 - **Edit and approve** — review each section, adjust the narrative or level, and save the final version
 
@@ -27,6 +28,10 @@ Before running setup, make sure you have:
    - After installing, pull a generation model — any will do, e.g.
      `ollama pull qwen3:8b` — and the embedding model, whose name must
      match exactly: `ollama pull qwen3-embedding:0.6b`
+5. **On an NVIDIA DGX Spark only:** an NGC API key, for a one-time login when
+   setup downloads NVIDIA's Nemotron retrieval models (free, from
+   ngc.nvidia.com). Setup recognises the Spark by itself and asks for it. See
+   *Retrieval Engine* below.
 
 ## Setup (One Time)
 
@@ -36,6 +41,12 @@ Before running setup, make sure you have:
 4. Open your browser to: **http://localhost:3000**
 
 That's it. The app will start automatically every time your machine boots.
+
+Setup also builds the ACGME reference index the summaries are grounded in. On a
+DGX Spark it first starts the two NVIDIA Nemotron containers, which means a
+one-time `docker login nvcr.io` (your NGC API key) and a download of several GB
+the first time. If any of that fails, setup carries on and says how to finish
+it later. The rest of the app works regardless.
 
 ## Daily Use
 
@@ -68,6 +79,27 @@ bash auc/check-model.sh nemotron:latest
 ```
 
 `auc/README.md` explains what it checks and why.
+
+## Retrieval Engine
+
+Before a summary is written, each note is matched to the ACGME
+sub-competencies it is about. Most are matched by keyword; for the rest the app
+searches the ACGME reference material, and there are two ways to do that
+search:
+
+- **Standard (Ollama)** — works on any machine that runs Ollama.
+- **NVIDIA Nemotron** — NVIDIA's embedding and reranking models, running in two
+  local containers. More careful matching, but it needs an NVIDIA GPU that can
+  run them, such as a DGX Spark.
+
+A DGX Spark uses NVIDIA Nemotron by default and every other machine uses
+Standard; setup takes care of either. Change it in **Settings → Retrieval
+engine**. An engine this machine cannot run is greyed out with the reason, so
+you can only switch to one that will work. The choice is for the whole app, not
+just your browser.
+
+If the engine in use stops working, summaries say so rather than quietly
+switching to the other one. `bash auc/preflight.sh` checks whichever is in use.
 
 ## Checking That Everything Works
 
@@ -126,6 +158,8 @@ auc/
 ├── verify-backup.sh  ← would the newest backup actually restore?
 ├── check-model.sh    ← can this model actually write summaries?
 ├── capture-environment.sh  ← write down how this machine is configured
+├── start-nemotron.sh ← start the NVIDIA Nemotron containers (setup runs it on a Spark)
+├── nim/              ← those two containers, defined for docker compose
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← the fuller manual
 ├── backend/

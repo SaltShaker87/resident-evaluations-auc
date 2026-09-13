@@ -8,6 +8,7 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Quick-add notes** — jot observations during CCC meetings tagged with ACGME domains, sentiment (strength/concern), and priority
 - **Track follow-ups** — keep a checklist of action items per resident, with a dashboard showing all open items
 - **AI-generated summaries** — press a button to draft a summary across all 21 ACGME sub-competencies using your local Ollama model, with a suggested milestone level and the supporting quotes for each
+- **Grounded in the ACGME milestones** — each note is matched to the sub-competencies it is about, by keyword or by searching the ACGME reference material with the retrieval engine chosen in Settings: NVIDIA Nemotron by default on a DGX Spark, Standard (Ollama) elsewhere (see "The retrieval engine" below)
 - **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; a section whose quotes don't check out is withheld rather than shown (see "How AI Summaries Work" below)
 - **Edit and approve** — review each section, adjust the narrative or level, and save the final version
 - **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
@@ -26,6 +27,10 @@ Before running setup, make sure you have:
    - After installing, pull a generation model — any will do, e.g.
      `ollama pull qwen3:8b` — and the embedding model, whose name must
      match exactly: `ollama pull qwen3-embedding:0.6b`
+5. **On an NVIDIA DGX Spark only:** an NGC API key (free, from ngc.nvidia.com)
+   for a one-time `docker login nvcr.io` when setup downloads the NVIDIA
+   Nemotron retrieval models. Setup recognises the Spark by itself and asks.
+   See *The retrieval engine* below.
 
 ## Setup (One Time)
 
@@ -35,6 +40,14 @@ Before running setup, make sure you have:
 4. Open your browser to: **http://localhost:3000**
 
 That's it. The app will start automatically every time your machine boots.
+
+Setup also builds the ACGME reference index (`rag/build_index.py`), once for
+each retrieval engine this machine can run. On a DGX Spark it first starts the
+two NVIDIA Nemotron containers with `start-nemotron.sh`. That needs a one-time
+`docker login nvcr.io` (username `$oauthtoken`, password your NGC API key),
+which setup offers to run, and downloads several GB the first time. None of this
+is fatal: if a step fails, setup finishes the rest, Settings shows what is
+missing, and the warning says how to retry.
 
 ## Logging In & Password Recovery
 
@@ -73,7 +86,9 @@ These commands are typed in your terminal:
 When you press **Generate Summary**, the app does *not* ask the model to write the
 whole report in one go. Instead:
 
-1. Each note and MedHub comment is routed to the ACGME sub-competencies it relates to.
+1. Each note and MedHub comment is routed to the ACGME sub-competencies it relates to:
+   by keyword, or, for a comment that matches no keyword, by searching the ACGME
+   reference material with the retrieval engine chosen in Settings (see below).
 2. The app builds the report skeleton itself from the ACGME ontology — always the
    same **21 sub-competencies**, in the same order. The model never decides which
    sub-competencies exist, so it cannot invent one.
@@ -109,6 +124,33 @@ the model tried to claim and what the app refused to show.
 Smaller models tend to paraphrase instead of quoting exactly, so more of their
 sections get withheld as "insufficient evidence." That is the evidence check working
 as designed, not a bug. If you see a lot of withheld sections, try a larger model.
+
+### The retrieval engine
+
+Step 1's search, for the comments no keyword catches, can be done two ways:
+
+- **Standard (Ollama)**: `qwen3-embedding:0.6b` through Ollama, taking the
+  closest match. Runs anywhere Ollama does.
+- **NVIDIA Nemotron**: NVIDIA's Nemotron embedding model shortlists ten
+  candidates and its reranking model, which reads the comment and each candidate
+  side by side, picks one. Runs in two local containers (`nim/`), which need an
+  NVIDIA GPU that supports them, such as a DGX Spark.
+
+**A DGX Spark uses NVIDIA Nemotron by default; every other machine uses
+Standard.** `setup.sh` recognises a Spark by its GB10 GPU and starts the
+containers itself. Change the engine in **Settings → Retrieval engine**. The
+choice is for the whole app, not one browser. An engine this machine cannot run
+right now, or whose index is not built, is greyed out with the reason, and the
+server refuses the switch too.
+
+The engine never changes on its own. If the one in use stops, because a
+container is down or Ollama has stopped, summaries fail with a message saying
+so, and Settings offers the other. Every line of `summary_validation.log`
+records which engine routed that summary (`engine=`).
+
+On another NVIDIA machine that can run the containers, `bash start-nemotron.sh`
+then `backend/venv/bin/python rag/build_index.py` makes Nemotron selectable
+there too. `rag/README.md` has the detail.
 
 ## Changing the AI Model
 
@@ -172,6 +214,10 @@ The two worth knowing about before anything goes wrong:
   confident nonsense. The index records which model built it and Settings
   reports a mismatch, but if you change this, rebuild the index in the same
   breath.
+- **`AUC_NIM_EMBED_URL` / `AUC_NIM_RERANK_URL`** are where the NVIDIA Nemotron
+  containers listen, on this machine. Resident comments are sent to them, so
+  never point them at NVIDIA's hosted service. The Nemotron embedding model is
+  stamped into its own index exactly as `AUC_EMBED_MODEL` is.
 - **`AUC_HOST`** defaults to `0.0.0.0`, meaning anyone who can reach this
   machine on the network can reach the app, over plain HTTP. Fine at home. On
   an untrusted network set it to `127.0.0.1` and put Tailscale Serve in front
@@ -192,8 +238,9 @@ bash auc/check-model.sh <model>   # can this MODEL actually write summaries?
 **`preflight.sh`** checks every environmental assumption the app makes:
 processor family, Python and Node versions, whether every package *imports*
 (installing and importing are different things, and the difference is where a
-new machine bites), the built interface, the bundled fonts, Ollama and its
-models, the ACGME index and its embedding-model stamp, the database and its
+new machine bites), the built interface, the bundled fonts, the retrieval
+engine in force and why (and on a Spark, the Nemotron containers), Ollama and
+its models, that engine's ACGME index and its embedding-model stamp, the database and its
 password, photos versus residents claiming one, the PDF fonts, the services,
 lingering, and whether the app answers on its port.
 
@@ -306,6 +353,8 @@ auc/
 ├── verify-backup.sh  ← would the newest backup actually restore?
 ├── check-model.sh    ← can this model actually write summaries?
 ├── capture-environment.sh  ← write down how this machine is configured
+├── start-nemotron.sh ← start the NVIDIA Nemotron containers (setup runs it on a Spark)
+├── nim/              ← those two containers, defined for docker compose
 ├── .env.example      ← every environment variable, with a comment each
 ├── README.md         ← you are here
 ├── SECURITY.md       ← record of security measures + password recovery
@@ -317,7 +366,8 @@ auc/
 │   ├── ccc.py        ← CCC meeting capture: schema + /api/ccc endpoints
 │   ├── ccc_export.py ← CCC study exports (de-identified CSV/JSON)
 │   ├── summary_builder.py ← AI summaries: one call per sub-competency + quote checking
-│   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies
+│   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies, with either engine
+│   ├── retrieval_engine.py ← which engine is in force, and can this machine run it
 │   ├── pdf_export.py ← builds summary PDFs
 │   ├── backup.py     ← full backup (db + photos), manual & scheduled
 │   ├── reset_password.py  ← last-resort password reset

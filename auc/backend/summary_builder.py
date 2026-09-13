@@ -440,19 +440,20 @@ def validate_section(entry, parsed, comments, logger, log_prefix):
 # Retrieval prep (blocking — run in a worker thread)
 # ---------------------------------------------------------------------------
 
-def _prepare_sync(comments):
+def _prepare_sync(comments, engine):
     """Load ontology, route comments, and fetch each sub-competency's descriptor.
 
-    Blocking: touches ChromaDB and a synchronous Ollama embed call. Returns
-    (skeleton, routed, descriptors). Raises rag_retrieval.RagUnavailable.
+    Blocking: touches ChromaDB and synchronous embed calls (Ollama or the
+    Nemotron containers, depending on engine). Returns (skeleton, routed,
+    descriptors). Raises rag_retrieval.RagUnavailable.
     """
     ontology = rag_retrieval.load_ontology()
-    collection = rag_retrieval.open_collection()
+    collection = rag_retrieval.open_collection(engine)
 
     skeleton = build_skeleton(ontology)
     known_ids = {e["id"] for e in skeleton}
 
-    routed = rag_retrieval.route_comments(comments, ontology, collection)
+    routed = rag_retrieval.route_comments(comments, ontology, collection, engine)
     # Routing can only ever produce ids from the ontology, but drop anything unknown
     # so a stale index entry cannot introduce a section that isn't in the skeleton.
     routed = {k: v for k, v in routed.items() if k in known_ids}
@@ -475,20 +476,23 @@ def sse(event, data):
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def generate_report(resident_id, resident_label, comments, model=None):
+async def generate_report(resident_id, resident_label, comments, model=None, *, engine):
     """Async generator yielding (event_name, payload) tuples.
 
     Emits `start` with the full skeleton, one `subcompetency` per section as it
     completes, and a final `done`. A fatal problem emits `error` and stops.
+
+    engine is the retrieval engine in force. It is written into every log line,
+    so the validation log records which engine routed each summary.
     """
     logger = get_logger()
     effective_model = model or SUMMARY_MODEL
     summary_id = str(uuid.uuid4())[:8]
-    log_prefix = f"[resident={resident_id} summary={summary_id}]"
+    log_prefix = f"[resident={resident_id} summary={summary_id} engine={engine}]"
 
     try:
         skeleton, routed, descriptors = await anyio.to_thread.run_sync(
-            _prepare_sync, comments
+            _prepare_sync, comments, engine
         )
     except rag_retrieval.RagUnavailable as e:
         logger.error("%s RETRIEVAL UNAVAILABLE: %s", log_prefix, e)

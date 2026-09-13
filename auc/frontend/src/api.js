@@ -154,6 +154,9 @@ export const getOllamaModels = () => request('/ollama/models');
 // ACGME index health — reported before a summary is attempted, not during one.
 export const getRagStatus = () => request('/rag/status');
 
+export const setRetrievalEngine = (engine) =>
+  request('/rag/engine', { method: 'PUT', body: JSON.stringify({ engine }) });
+
 // MedHub Import
 export const parseMedhubCsv = async (file) => {
   const formData = new FormData();

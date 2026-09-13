@@ -1743,6 +1743,16 @@ body {
   line-height: 1.5;
 }
 
+/* Why a retrieval engine cannot be selected, or why a switch was refused —
+   a sentence from the server, so it gets the label column's width. */
+.settings-row__note {
+  margin-top: 0.3rem;
+  line-height: 1.5;
+}
+
+.settings-row__note--error { color: var(--red-700); }
+[data-theme="dark"] .settings-row__note--error { color: #fca5a5; }
+
 .resident-card--inactive {
   opacity: 0.62;
 }

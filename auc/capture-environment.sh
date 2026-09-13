@@ -144,6 +144,23 @@ if [ -n "$PROFILE_OLLAMA" ]; then
 fi
 printf '    Model store size: %s\n' "$(du -sh "${OLLAMA_MODELS:-$HOME/.ollama}" 2>/dev/null | cut -f1)"
 
+h "Retrieval engine"
+q "Which engine grounds the summaries, and why"
+if [ -x "$VENV_PY" ]; then
+    "$VENV_PY" - <<PYENGINE 2>&1 | sed 's/^/    /'
+import sys
+sys.path.insert(0, "$BACKEND")
+import retrieval_engine as r
+stored = r.stored_on_disk()
+print(f"In force  : {r.resolve(stored)} "
+      f"({'chosen in Settings' if stored else 'the default for this machine'})")
+print(f"DGX Spark : {'yes' if r.is_spark() else 'no'}")
+PYENGINE
+else
+    printf '    (no Python environment to ask)\n'
+fi
+run "Nemotron containers:" docker ps --all --filter name=nemotron --format '{{.Names}}  {{.Image}}  {{.Status}}'
+
 h "The custom fine-tune (Q6-Q8)"
 printf '\nModelfiles for every installed model are captured below. These are the\n'
 printf 'recipes. For a model you fine-tuned yourself this is the only written\n'

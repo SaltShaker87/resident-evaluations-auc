@@ -138,6 +138,26 @@ own user account password.
 
 ---
 
+## The NVIDIA Nemotron containers
+
+With the NVIDIA Nemotron retrieval engine (the default on a DGX Spark), notes
+that match no ACGME keyword are sent to two NVIDIA containers running on the
+same machine (`nim/docker-compose.yml`). They are bound to `127.0.0.1`, so
+nothing else on the network can reach them, and once their model weights are
+downloaded they need no network themselves.
+
+NVIDIA also offers these models as a hosted service (build.nvidia.com).
+**Never point `AUC_NIM_EMBED_URL` or `AUC_NIM_RERANK_URL` at it**, because that
+would send resident comments off this machine. A test (`test_config.py`)
+checks that the defaults point at this machine.
+
+The NGC API key that downloads the images is typed into `docker login`, which
+keeps it in `~/.docker/config.json`, outside the repository. `NGC_API_KEY` and
+`HF_TOKEN` are passed to the containers from the shell environment only and
+never written to a file.
+
+---
+
 ## Still recommended before hosting on the DGX Spark
 
 These were identified in the review. Items 2 and 3 have since been done and

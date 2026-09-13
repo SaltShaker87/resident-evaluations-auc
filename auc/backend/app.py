@@ -23,6 +23,7 @@ import httpx
 import medhub_api
 import pdf_export
 import rag_retrieval
+import retrieval_engine
 import summary_builder
 
 # ---------------------------------------------------------------------------
@@ -166,6 +167,7 @@ def init_db():
             );
         """)
         conn.executescript(ccc.SCHEMA_SQL)
+        conn.executescript(retrieval_engine.SCHEMA_SQL)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
             "ALTER TABLE residents ADD COLUMN interests TEXT",
@@ -256,6 +258,9 @@ class AdvancementExecute(BaseModel):
     depart: List[str] = []
     summary: Optional[str] = None
 
+class EngineChoice(BaseModel):
+    engine: Literal["ollama", "nemotron"]
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
@@ -279,6 +284,7 @@ app = FastAPI(
 
 auth.init_auth(db_connection)
 ccc.init_ccc(db_connection)
+retrieval_engine.init_retrieval_engine(db_connection)
 app.include_router(auth.router)
 app.include_router(ccc.router)
 
@@ -659,8 +665,28 @@ def get_rag_status():
     broken index is visible before someone tries to generate a summary in a
     committee meeting. Never raises — a status check that can take the app down
     is worse than no status check.
+
+    The top-level fields are for the retrieval engine in force; "engines" says,
+    for each engine, whether this machine can run it and whether its index is
+    built, which is what Settings needs to offer a switch.
     """
-    return rag_retrieval.index_status()
+    return retrieval_engine.status()
+
+
+@app.put("/api/rag/engine")
+def set_rag_engine(data: EngineChoice):
+    """Switch the retrieval engine for the whole app.
+
+    Refused with 409, and the reason, unless this machine can run the engine
+    right now and its index is built. The server decides, not the page: a
+    Settings screen left open for an hour can offer a switch that is no longer
+    possible.
+    """
+    try:
+        retrieval_engine.set_active(data.engine)
+    except retrieval_engine.EngineUnavailable as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return retrieval_engine.status()
 
 
 # ---------------------------------------------------------------------------
@@ -755,7 +781,9 @@ async def generate_summary(
     ]
 
     try:
-        prompt, rag_routing = rag_retrieval.compose_prompt(resident_label, rag_comments)
+        prompt, rag_routing = rag_retrieval.compose_prompt(
+            resident_label, rag_comments, retrieval_engine.get_active()
+        )
         print(
             f"[generate-summary] RAG-grounded prompt for {resident_id}: "
             f"{len(rag_routing)} competencies with evidence: {rag_routing}"
@@ -872,11 +900,12 @@ async def stream_summary(
     the older endpoint's behaviour: an abandoned run leaves nothing behind.
     """
     _resident, resident_label, comments = _load_resident_evidence(resident_id)
+    engine = retrieval_engine.get_active()
 
     async def event_stream():
         try:
             async for event, payload in summary_builder.generate_report(
-                resident_id, resident_label, comments, model=model
+                resident_id, resident_label, comments, model=model, engine=engine
             ):
                 if event == "done":
                     report = payload.pop("report")

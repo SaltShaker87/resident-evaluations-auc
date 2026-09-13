@@ -48,6 +48,17 @@ def test_the_embedding_model_can_be_overridden(reloaded_config):
     assert config.EMBED_MODEL == "nomic-embed-text"
 
 
+def test_the_nemotron_containers_default_to_this_machine(reloaded_config, monkeypatch):
+    """Resident comments are sent to these. A default pointing anywhere but this
+    machine would send them off it."""
+    for key in ("AUC_NIM_EMBED_URL", "AUC_NIM_RERANK_URL"):
+        monkeypatch.delenv(key, raising=False)
+    config = reloaded_config()
+
+    assert config.NIM_EMBED_URL.startswith("http://localhost:")
+    assert config.NIM_RERANK_URL.startswith("http://localhost:")
+
+
 def test_the_data_directory_follows_the_environment(reloaded_config, tmp_path):
     config = reloaded_config(AUC_DATA_DIR=str(tmp_path / "elsewhere"))
     assert config.DATA_DIR == tmp_path / "elsewhere"

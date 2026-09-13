@@ -167,9 +167,20 @@ PY
 }
 
 # ---- Step 1: Check prerequisites ----
-echo "[1/5] Checking prerequisites..."
+echo "[1/7] Checking prerequisites..."
 
 echo "  · Processor family: $(uname -m)"
+
+# A DGX Spark (or another maker's GB10 machine) gets the NVIDIA Nemotron
+# retrieval engine by default. Same rule as backend/retrieval_engine.py: the
+# GPU is a GB10. Asked here directly because the Python environment the app
+# would ask with does not exist yet.
+IS_SPARK=0
+if command -v nvidia-smi &> /dev/null \
+        && nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -q GB10; then
+    IS_SPARK=1
+    echo "  · DGX Spark detected (NVIDIA GB10): the NVIDIA Nemotron retrieval engine will be set up"
+fi
 
 if ! command -v python3 &> /dev/null; then
     echo "  ✗ Python 3 not found. Please install Python 3.10 or newer."
@@ -236,7 +247,7 @@ fi
 
 # ---- Step 2: Set up Python backend ----
 echo ""
-echo "[2/5] Setting up Python backend..."
+echo "[2/7] Setting up Python backend..."
 
 cd "$SCRIPT_DIR/backend"
 
@@ -286,7 +297,7 @@ deactivate
 
 # ---- Step 3: Build frontend ----
 echo ""
-echo "[3/5] Building frontend..."
+echo "[3/7] Building frontend..."
 
 cd "$SCRIPT_DIR/frontend"
 
@@ -306,14 +317,64 @@ echo "  ✓ Frontend built"
 
 # ---- Step 4: Create data directory ----
 echo ""
-echo "[4/5] Setting up data directory..."
+echo "[4/7] Setting up data directory..."
 
 mkdir -p "$SCRIPT_DIR/data/photos"
 echo "  ✓ Data directory ready"
 
-# ---- Step 5: Create startup script and systemd service ----
+# ---- Step 5: NVIDIA Nemotron retrieval (DGX Spark only) ----
 echo ""
-echo "[5/5] Configuring auto-start..."
+echo "[5/7] NVIDIA Nemotron retrieval engine..."
+
+# On a Spark this is the default engine, so setup starts its two containers.
+# Anywhere else it is skipped: Standard (Ollama) is the default there, and
+# Nemotron can still be added later on any machine with a capable NVIDIA GPU
+# by running start-nemotron.sh. Nothing here is fatal. If it fails, the app
+# still installs, Settings shows Nemotron as unavailable, and Standard can be
+# chosen there.
+NEMOTRON_READY=0
+if [ "$IS_SPARK" -eq 0 ]; then
+    echo "  · Skipped: not a DGX Spark, so the Standard (Ollama) engine is the default."
+elif bash "$SCRIPT_DIR/start-nemotron.sh"; then
+    NEMOTRON_READY=1
+else
+    echo ""
+    echo "  ⚠ The Nemotron containers are not running."
+    echo ""
+    echo "    The app still installs. Until they run, Settings shows NVIDIA"
+    echo "    Nemotron as unavailable and summaries fail with a message saying so."
+    echo "    Choose Standard (Ollama) in Settings to use this machine meanwhile."
+    echo ""
+    echo "    To retry on its own, then build its index:"
+    echo "      bash $SCRIPT_DIR/start-nemotron.sh"
+    echo "      $SCRIPT_DIR/backend/venv/bin/python $SCRIPT_DIR/rag/build_index.py"
+    echo ""
+fi
+
+# ---- Step 6: Build the ACGME reference index ----
+echo ""
+echo "[6/7] Building the ACGME reference index..."
+
+# One index per retrieval engine this machine can run right now.
+# build_index.py checks each engine itself and skips, with the reason, any it
+# cannot reach, most often because the embedding model has not been pulled
+# into Ollama yet. Not fatal: the rest of the app works without it, and
+# Settings says what is missing.
+if [ "$RAG_INSTALLED" -eq 0 ]; then
+    echo "  · Skipped: the ACGME index layer (chromadb) did not install. See step 2."
+elif "$SCRIPT_DIR/backend/venv/bin/python" "$SCRIPT_DIR/rag/build_index.py"; then
+    echo "  ✓ ACGME index built"
+else
+    echo ""
+    echo "  ⚠ The ACGME index was not built for every engine (the reasons are above)."
+    echo "    Summary generation needs it. Once the cause is fixed, run:"
+    echo "      $SCRIPT_DIR/backend/venv/bin/python $SCRIPT_DIR/rag/build_index.py"
+    echo ""
+fi
+
+# ---- Step 7: Create startup script and systemd service ----
+echo ""
+echo "[7/7] Configuring auto-start..."
 
 # Everything above this point has worked. If this machine has no user systemd
 # session — a container, or SSH to a host without lingering — say so and stop
@@ -409,7 +470,7 @@ echo "  ✓ Auto-start configured"
 
 # ---- Automated daily backup ----
 echo ""
-echo "[5b/5] Configuring automated daily backup..."
+echo "[7b/7] Configuring automated daily backup..."
 
 # Default backup destination. Point AUC_BACKUP_DIR at a synced folder
 # (e.g. your institutional OneDrive) so backups end up safely off this
@@ -455,6 +516,13 @@ if [ "$RAG_INSTALLED" -eq 0 ]; then
     echo "  ⚠ Setup finished, but WITHOUT the ACGME index layer."
     echo "    Summary generation will not work until chromadb installs."
     echo "    Everything else is ready. See the warning in step 2 above."
+    echo ""
+fi
+if [ "$IS_SPARK" -eq 1 ] && [ "$NEMOTRON_READY" -eq 0 ]; then
+    echo "  ⚠ Setup finished, but the NVIDIA Nemotron containers are not running."
+    echo "    This machine defaults to Nemotron, so summaries will not work until"
+    echo "    they do, or until Standard (Ollama) is chosen in Settings."
+    echo "    See the warning in step 5 above."
     echo ""
 fi
 echo "  ╔══════════════════════════════════════╗"

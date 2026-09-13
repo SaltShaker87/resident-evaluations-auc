@@ -233,16 +233,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-section "Ollama and the ACGME index"
+section "Retrieval engine, Ollama and the ACGME index"
 # ---------------------------------------------------------------------------
 
 if [ -x "$VENV_PY" ]; then
     OLLAMA_URL=$("$VENV_PY" -c "import sys; sys.path.insert(0, '$BACKEND'); import config; print(config.OLLAMA_URL)" 2>/dev/null)
     EMBED_MODEL=$("$VENV_PY" -c "import sys; sys.path.insert(0, '$BACKEND'); import config; print(config.EMBED_MODEL)" 2>/dev/null)
+
+    # The engine in force, by the app's own rule: the choice made in Settings,
+    # or the default for this hardware. The database is opened immutable.
+    ENGINE_INFO=$("$VENV_PY" -c "
+import sys
+sys.path.insert(0, '$BACKEND')
+import retrieval_engine as r
+stored = r.stored_on_disk()
+print(r.resolve(stored))
+print('chosen in Settings' if stored else 'the default for this machine')
+print('yes' if r.is_spark() else 'no')
+" 2>/dev/null)
+    ENGINE=$(echo "$ENGINE_INFO" | sed -n '1p')
+    ENGINE_WHY=$(echo "$ENGINE_INFO" | sed -n '2p')
+    IS_SPARK=$(echo "$ENGINE_INFO" | sed -n '3p')
 else
     OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
     EMBED_MODEL="${AUC_EMBED_MODEL:-qwen3-embedding:0.6b}"
 fi
+ENGINE="${ENGINE:-ollama}"
+
+if [ "$IS_SPARK" = "yes" ]; then
+    info "DGX Spark detected (NVIDIA GB10): NVIDIA Nemotron is this machine's default engine"
+fi
+if [ "$ENGINE" = "nemotron" ]; then
+    info "Retrieval engine: NVIDIA Nemotron (${ENGINE_WHY:-unknown})"
+else
+    info "Retrieval engine: Standard (Ollama) (${ENGINE_WHY:-assumed; no Python environment to ask})"
+fi
+
+# Ollama writes the summaries whichever engine does the retrieval, so it is
+# needed either way. Only the embedding model belongs to one engine.
 
 if MODELS=$(curl -sf --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null); then
     NAMES=$(echo "$MODELS" | "$VENV_PY" -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" 2>/dev/null)
@@ -260,22 +288,48 @@ if MODELS=$(curl -sf --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null); then
         # because it must be the model the index was built with.
         if echo "$NAMES" | grep -qx "$EMBED_MODEL"; then
             pass "Embedding model present by exact name: $EMBED_MODEL"
-        else
+        elif [ "$ENGINE" = "ollama" ]; then
             fail "Embedding model '$EMBED_MODEL' is not installed" "ollama pull $EMBED_MODEL"
+        else
+            info "Standard engine's embedding model ($EMBED_MODEL) is not installed; only needed to switch to Standard"
         fi
     fi
 else
     fail "Ollama not answering at $OLLAMA_URL" "Start it (systemctl status ollama), or point OLLAMA_URL elsewhere."
 fi
 
+# The Nemotron containers matter when that engine is in force, and are worth
+# a mention on a Spark, where it is the default.
+if [ -x "$VENV_PY" ]; then
+    NIM=$("$VENV_PY" -c "
+import sys
+sys.path.insert(0, '$BACKEND')
+import retrieval_engine as r
+a = r.availability('nemotron')
+print('yes' if a['available'] else 'no')
+print(a['reason'])
+" 2>/dev/null)
+    NIM_UP=$(echo "$NIM" | head -1)
+    NIM_REASON=$(echo "$NIM" | tail -n +2)
+    if [ "$NIM_UP" = "yes" ]; then
+        pass "Nemotron containers answering (embedding and reranking)"
+    elif [ "$ENGINE" = "nemotron" ]; then
+        fail "Nemotron containers not answering — summary generation will not work" \
+             "${NIM_REASON:-bash $SCRIPT_DIR/start-nemotron.sh} Or choose Standard (Ollama) in Settings."
+    elif [ "$IS_SPARK" = "yes" ]; then
+        info "Nemotron containers not running (Standard is in use). Start them: bash $SCRIPT_DIR/start-nemotron.sh"
+    fi
+fi
+
 # The index check is the app's own, so preflight and Settings can never
-# disagree about what healthy looks like.
+# disagree about what healthy looks like. It is the index of the engine in
+# force; each engine has its own.
 if [ -x "$VENV_PY" ]; then
     STATUS=$("$VENV_PY" -c "
 import sys
 sys.path.insert(0, '$BACKEND')
 import rag_retrieval
-s = rag_retrieval.index_status()
+s = rag_retrieval.index_status('$ENGINE')
 print(s['level'])
 print(s['message'])
 " 2>/dev/null)

@@ -602,10 +602,21 @@ touching the application.
 
 ## Phase G — Build the search index
 
+On the Spark the default retrieval engine is **NVIDIA Nemotron** (NVIDIA's
+embedding and reranking models in two local containers), not Standard (Ollama).
+`setup.sh` recognises the GB10, starts the containers (step 5) and builds the
+index for every engine it can run (step 6), so these checks should already pass.
+The commands are here for when they do not. See `auc/rag/README.md` for what the
+two engines are.
+
+- [ ] **Nemotron containers are up.** `bash auc/start-nemotron.sh` (safe to re-run; it returns as soon as both answer)
+      *Observable:* `✓ Nemotron containers ready`. The very first start asks for a one-time `docker login nvcr.io` (username `$oauthtoken`, password your NGC API key) and downloads several GB.
 - [ ] **Build it.** `auc/backend/venv/bin/python auc/rag/build_index.py`
-      *Observable:* prints `Indexed 42 chunks into collection 'acgme_guidelines'` — expect 21 per source file, 42 total. A much smaller number means the reference documents were not read properly.
-- [ ] **Test that retrieval works.** `auc/backend/venv/bin/python auc/rag/test_query.py "missed a posterior circulation stroke"`
-      *Observable:* three results come back, and the top one is plausibly about clinical reasoning or patient care — not a random professionalism entry. If results look arbitrary, the embedding model is probably not the one the index was built with.
+      *Observable:* prints `Indexed 42 chunks into collection 'acgme_guidelines' (Standard (Ollama))` and `Indexed 42 chunks into collection 'acgme_guidelines_nemotron' (NVIDIA Nemotron)` — 21 per source file for each. A much smaller number means the reference documents were not read properly. A `Skipping` line names an engine that could not run, and why.
+- [ ] **Test that retrieval works.** `auc/backend/venv/bin/python auc/rag/test_query.py --engine nemotron "missed a posterior circulation stroke"`
+      *Observable:* both lists (by embedding distance, and after reranking) come back, and the top of the reranked one is plausibly about clinical reasoning or patient care — not a random professionalism entry. If results look arbitrary, the embedding model is probably not the one the index was built with.
+- [ ] **Settings shows the right engine.** Settings → AI Model → Retrieval engine.
+      *Observable:* NVIDIA Nemotron is selected and the description says `DGX Spark detected`; Standard (Ollama) is also selectable. If Nemotron is marked unavailable, the reason is shown beside it.
 - [ ] **Do not proceed to Phase H expecting summaries to work until both of the above pass.** Since the `study-branch` merge, the summary generator treats a missing index as a hard error rather than falling back. No index means no summaries.
 
 ---

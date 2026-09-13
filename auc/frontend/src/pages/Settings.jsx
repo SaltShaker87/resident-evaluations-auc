@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sun, Moon, GraduationCap, RotateCcw, AlertTriangle, Download, Check } from 'lucide-react';
-import { getOllamaModels, getRagStatus, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
+import { getOllamaModels, getRagStatus, setRetrievalEngine, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
 import AdvancementWizard from '../components/AdvancementWizard';
 
 // Index health, as one word in the tag. The sentence explaining it — and what
@@ -10,6 +10,12 @@ const RAG_STATUS_LABELS = {
   warning: 'Attention',
   error: 'Unavailable',
 };
+
+// A retrieval engine can be switched to only if this machine can run it and
+// its index is built. The server checks the same thing again on the switch,
+// and says why when it refuses; this only saves offering a switch that will fail.
+const engineUsable = (info) => info.available && info.index?.level !== 'error';
+const engineBlocker = (info) => (info.available ? info.index?.message : info.reason);
 
 function formatSnapshotDate(dateStr) {
   if (!dateStr) return '';
@@ -31,6 +37,8 @@ export default function Settings({ theme, setTheme }) {
 
   // ACGME index health. null while the first check is in flight.
   const [ragStatus, setRagStatus] = useState(null);
+  const [engineBusy, setEngineBusy] = useState(false);
+  const [engineError, setEngineError] = useState('');
 
   const [showWizard, setShowWizard] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
@@ -116,6 +124,18 @@ export default function Settings({ theme, setTheme }) {
       }));
   }, []);
 
+  // The switch returns the new status, so the index row below follows it.
+  const handleEngineChange = async (e) => {
+    setEngineBusy(true);
+    setEngineError('');
+    try {
+      setRagStatus(await setRetrievalEngine(e.target.value));
+    } catch (err) {
+      setEngineError(err.message || 'Could not switch the retrieval engine.');
+    }
+    setEngineBusy(false);
+  };
+
   const handleModelChange = (e) => {
     const val = e.target.value;
     setDefaultModelState(val);
@@ -195,6 +215,49 @@ export default function Settings({ theme, setTheme }) {
             )}
           </div>
         </div>
+
+        {ragStatus?.engines && (
+          <div className="settings-row">
+            <div>
+              <div className="settings-row__label">Retrieval engine</div>
+              <div className="settings-row__desc">
+                How a comment that matches no ACGME keyword finds its sub-competency.
+                Default on this machine: {ragStatus.engines[ragStatus.default_engine]?.label}
+                {ragStatus.is_spark ? ' (DGX Spark detected)' : ''}.
+              </div>
+              {Object.entries(ragStatus.engines)
+                .filter(([key, info]) => key !== ragStatus.engine && !engineUsable(info))
+                .map(([key, info]) => (
+                  <div key={key} className="settings-row__desc settings-row__note">
+                    {info.label} can&apos;t be selected: {engineBlocker(info)}
+                  </div>
+                ))}
+              {engineError && (
+                <div className="settings-row__desc settings-row__note settings-row__note--error">
+                  {engineError}
+                </div>
+              )}
+            </div>
+            <div className="settings-row__control">
+              <select
+                className="form-select"
+                style={{ width: 'auto', minWidth: '200px' }}
+                value={ragStatus.engine}
+                onChange={handleEngineChange}
+                disabled={engineBusy}
+              >
+                {Object.entries(ragStatus.engines).map(([key, info]) => {
+                  const selectable = key === ragStatus.engine || engineUsable(info);
+                  return (
+                    <option key={key} value={key} disabled={!selectable}>
+                      {info.label}{selectable ? '' : ' — unavailable'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="settings-row settings-row--status">
           <div className="settings-row__heading">
