@@ -80,8 +80,10 @@ pub fn run(ctx: &mut Ctx, app: &Path) -> Result<()> {
     let venv = backend.join("venv");
     ctx.progress
         .detail(StepId::Python, "Creating the Python environment");
+    // `--clear` lets Repair and same-version Update replace an environment
+    // that is already there instead of stopping with "already exists".
     Cmd::new(uv.display().to_string())
-        .args(["venv", "--python", PYTHON_VERSION])
+        .args(["venv", "--clear", "--python", PYTHON_VERSION])
         .arg(venv.display().to_string())
         .envs(uv_env.clone())
         .timeout(Duration::from_secs(10 * 60))
