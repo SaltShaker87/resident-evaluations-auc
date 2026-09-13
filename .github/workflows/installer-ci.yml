@@ -178,13 +178,13 @@ jobs:
           curl -sf http://localhost:3000/api/version
           [ -f "$RUNNER_TEMP/auc-run.log" ] && cat "$RUNNER_TEMP/auc-run.log" || true
 
-          "$INSTALLER" --headless update --source "$TARBALL"
+          "$INSTALLER" --headless update --source "$TARBALL" --yes
 
           # The hand-started server (if any) holds the old version's files open;
           # stop it before uninstall so the directory can be removed cleanly.
           pkill -f 'uvicorn app:app' || true
 
-          "$INSTALLER" --headless uninstall
+          "$INSTALLER" --headless uninstall --yes
 
           if [ -d "$HOME/.local/share/auc/app" ]; then
             echo "Expected app/ to be removed after uninstall" >&2
