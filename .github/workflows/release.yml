@@ -1,0 +1,226 @@
+# Build the AUC app tarball and Linux installer packages, then attach them to one draft GitHub Release.
+#
+# Release attach strategy: the installer matrix jobs only upload workflow artifacts.
+# tauri-action is used to compile bundles but is NOT given tagName, so it never
+# creates or mutates a GitHub Release. The publish job creates/updates a single
+# draft release and uploads the tarball, checksum, and all four installer files.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v1.4.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app-tarball:
+    name: App tarball
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: auc/frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: auc/frontend
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: Pack release tarball
+        run: |
+          chmod +x .github/scripts/build-app-tarball.sh
+          .github/scripts/build-app-tarball.sh "${{ steps.version.outputs.version }}" "$RUNNER_TEMP/tarball-out" --skip-frontend
+
+      - name: Sanity-check tarball contents
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          EXTRACT="$RUNNER_TEMP/auc-extract"
+          mkdir -p "$EXTRACT"
+          tar -xzf "$RUNNER_TEMP/tarball-out/auc-${VERSION}.tar.gz" -C "$EXTRACT"
+          test -f "$EXTRACT/auc/VERSION"
+          test -f "$EXTRACT/auc/frontend/dist/index.html"
+          test -f "$EXTRACT/auc/run.sh"
+          test -f "$EXTRACT/auc/preflight.sh"
+          test -f "$EXTRACT/auc/nim/docker-compose.yml"
+          test -f "$EXTRACT/auc/backend/requirements.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-tarball
+          path: |
+            ${{ runner.temp }}/tarball-out/auc-${{ steps.version.outputs.version }}.tar.gz
+            ${{ runner.temp }}/tarball-out/auc-${{ steps.version.outputs.version }}.tar.gz.sha256
+
+  installer:
+    name: Installer (${{ matrix.label }})
+    needs: app-tarball
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-24.04
+            label: linux-x86_64
+            arch: x86_64
+          - runs-on: ubuntu-24.04-arm
+            label: linux-aarch64
+            arch: aarch64
+    env:
+      # AppImage strip can fail on arm64 builders; skipping strip is the usual workaround.
+      NO_STRIP: ${{ matrix.arch == 'aarch64' && 'true' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - name: Stamp installer version from tag
+        env:
+          VERSION: ${{ needs.app-tarball.outputs.version }}
+        run: |
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" installer/package.json
+          jq --arg v "$VERSION" '.version = $v' installer/src-tauri/tauri.conf.json > installer/src-tauri/tauri.conf.json.tmp
+          mv installer/src-tauri/tauri.conf.json.tmp installer/src-tauri/tauri.conf.json
+          sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" installer/src-tauri/Cargo.toml
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri
+
+      - name: Install npm dependencies
+        working-directory: installer
+        run: npm ci
+
+      - name: Build .deb and AppImage
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: installer
+          # No tagName — publish job owns the GitHub Release and all uploads.
+
+      - name: Rename bundles for download
+        env:
+          VERSION: ${{ needs.app-tarball.outputs.version }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          OUT="$RUNNER_TEMP/installer-renamed"
+          mkdir -p "$OUT"
+          shopt -s nullglob
+          for deb in installer/src-tauri/target/release/bundle/deb/*.deb; do
+            cp "$deb" "$OUT/AUC-Installer-${VERSION}-${LABEL}.deb"
+          done
+          for appimage in installer/src-tauri/target/release/bundle/appimage/*.AppImage; do
+            cp "$appimage" "$OUT/AUC-Installer-${VERSION}-${LABEL}.AppImage"
+          done
+          if [ ! -f "$OUT/AUC-Installer-${VERSION}-${LABEL}.deb" ] || [ ! -f "$OUT/AUC-Installer-${VERSION}-${LABEL}.AppImage" ]; then
+            echo "Expected .deb and .AppImage under bundle/ — found:" >&2
+            find installer/src-tauri/target/release/bundle -type f >&2 || true
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.label }}
+          path: ${{ runner.temp }}/installer-renamed/*
+
+  publish:
+    name: Publish draft release
+    needs: [app-tarball, installer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Flatten downloaded assets
+        run: |
+          mkdir -p release-flat
+          find release-assets -type f -exec cp {} release-flat/ \;
+          ls -la release-flat
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: AUC ${{ needs.app-tarball.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            ## Which file do I need?
+
+            - **Ubuntu PC (Intel or AMD):** `AUC-Installer-*-linux-x86_64.deb`
+            - **DGX Spark or HP ZGX Nano (ARM):** `AUC-Installer-*-linux-aarch64.deb`
+            - **If the .deb will not open:** try the matching `.AppImage` for your processor (x86_64 or aarch64).
+            - **Server or scripted install:** `auc-*.tar.gz` (verify with the `.sha256` file first).
+
+            ---
+
+            Automated release notes follow.
+          files: release-flat/*

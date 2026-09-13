@@ -1,0 +1,196 @@
+# CI for the Tauri installer: React lint/build, Rust fmt/clippy/test, and a headless install smoke test.
+
+name: Installer CI
+
+on:
+  pull_request:
+    paths:
+      - "installer/**"
+      - ".github/workflows/installer-ci.yml"
+      - ".github/scripts/build-app-tarball.sh"
+  push:
+    branches: [main]
+    paths:
+      - "installer/**"
+      - ".github/workflows/installer-ci.yml"
+      - ".github/scripts/build-app-tarball.sh"
+  workflow_dispatch:
+
+concurrency:
+  group: installer-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - name: Lint and build installer UI
+        working-directory: installer
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+  rust:
+    name: Rust fmt, clippy, test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri
+
+      # generate_context! embeds the Vite dist at compile time — same as a real release build.
+      - name: Build installer frontend
+        working-directory: installer
+        run: npm ci && npm run build
+
+      - name: cargo fmt, clippy, test
+        working-directory: installer/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+  headless-install:
+    name: Headless install smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [frontend, rust]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            installer/package-lock.json
+            auc/frontend/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri
+
+      - name: Build installer binary
+        working-directory: installer
+        run: |
+          npm ci && npm run build
+          cd src-tauri && cargo build --release
+
+      - name: Build local app tarball (same as release.yml)
+        run: |
+          chmod +x .github/scripts/build-app-tarball.sh
+          .github/scripts/build-app-tarball.sh "0.0.0-ci" "$RUNNER_TEMP/auc-tarball"
+
+      - name: Headless install, update, uninstall
+        env:
+          INSTALLER: ${{ github.workspace }}/installer/src-tauri/target/release/auc-installer
+          TARBALL: ${{ runner.temp }}/auc-tarball/auc-0.0.0-ci.tar.gz
+        run: |
+          set -euo pipefail
+          "$INSTALLER" --headless install --no-ai --network local --source "$TARBALL" --yes
+
+          test -f "$HOME/.config/auc/auc.env"
+          grep -q 'AUC_HOST=127.0.0.1' "$HOME/.config/auc/auc.env"
+          test -x "$HOME/.local/share/auc/app/current/backend/venv/bin/python"
+
+          # GitHub runners often have no user session bus, so `systemctl --user`
+          # cannot work there. The installer reports that as a warning and
+          # finishes (as setup.sh does). To still prove the install runs, start
+          # the app by hand the way the service would: run.sh with auc.env
+          # loaded, using the private Python the installer set up.
+          if systemctl --user show-environment &>/dev/null; then
+            systemctl --user is-enabled auc.service
+          else
+            echo "NOTICE: systemctl --user unavailable on this runner — starting AUC by hand instead"
+            (
+              set -a
+              # shellcheck disable=SC1091
+              . "$HOME/.config/auc/auc.env"
+              set +a
+              nohup "$HOME/.local/share/auc/app/current/run.sh" > "$RUNNER_TEMP/auc-run.log" 2>&1 &
+            )
+          fi
+
+          for _ in $(seq 1 45); do
+            if curl -sf http://localhost:3000/api/auth/status; then
+              break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:3000/api/auth/status
+          curl -sf http://localhost:3000/api/version
+          [ -f "$RUNNER_TEMP/auc-run.log" ] && cat "$RUNNER_TEMP/auc-run.log" || true
+
+          "$INSTALLER" --headless update --source "$TARBALL"
+
+          # The hand-started server (if any) holds the old version's files open;
+          # stop it before uninstall so the directory can be removed cleanly.
+          pkill -f 'uvicorn app:app' || true
+
+          "$INSTALLER" --headless uninstall
+
+          if [ -d "$HOME/.local/share/auc/app" ]; then
+            echo "Expected app/ to be removed after uninstall" >&2
+            ls -la "$HOME/.local/share/auc/" >&2 || true
+            exit 1
+          fi
+          test -d "$HOME/.local/share/auc/data"

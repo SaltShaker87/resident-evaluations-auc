@@ -43,7 +43,7 @@ HOST: str = os.environ.get("AUC_HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("AUC_PORT", "3000"))
 
 OLLAMA_URL: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "clinical-reasoning:latest")
+OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "qwen3.5:4b")
 OLLAMA_MAX_TOKENS: int = int(os.environ.get("OLLAMA_MAX_TOKENS", "2048"))
 
 # ---------------------------------------------------------------------------
@@ -105,6 +105,26 @@ NIM_EMBED_MODEL: str = os.environ.get("AUC_NIM_EMBED_MODEL", "nvidia/nemotron-3-
 NIM_RERANK_URL: str = os.environ.get("AUC_NIM_RERANK_URL", "http://localhost:8002")
 NIM_RERANK_MODEL: str = os.environ.get("AUC_NIM_RERANK_MODEL", "nvidia/llama-nemotron-rerank-vl-1b-v2")
 RERANK_CANDIDATES: int = int(os.environ.get("AUC_RERANK_CANDIDATES", "10"))
+
+# ---------------------------------------------------------------------------
+# Which retrieval engine to start out with
+#
+# AUC_RETRIEVAL_ENGINE_DEFAULT : the engine to use when nobody has chosen one.
+#                   The engine chosen in Settings always wins over this. With
+#                   nothing chosen, this name — "ollama" or "nemotron" — is
+#                   the default. Anything else is ignored, and with this unset
+#                   the hardware rule applies: NVIDIA Nemotron on a GB10
+#                   (a DGX Spark), Standard (Ollama) everywhere else.
+#
+#                   It exists for the graphical installer. Installing on a
+#                   Spark whose Nemotron containers would not start leaves a
+#                   machine that defaults to an engine which is not running,
+#                   so every summary fails until somebody opens Settings. The
+#                   installer writes AUC_RETRIEVAL_ENGINE_DEFAULT=ollama in
+#                   that case, so summaries work from the first minute, and
+#                   removes it once Nemotron is up.
+# ---------------------------------------------------------------------------
+RETRIEVAL_ENGINE_DEFAULT: str = os.environ.get("AUC_RETRIEVAL_ENGINE_DEFAULT", "")
 
 # ---------------------------------------------------------------------------
 # MedHub API — fill these in once API documentation is obtained.

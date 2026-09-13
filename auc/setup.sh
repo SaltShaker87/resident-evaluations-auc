@@ -438,7 +438,7 @@ ExecStart=$SCRIPT_DIR/run.sh
 Restart=on-failure
 RestartSec=5
 Environment=OLLAMA_URL=http://localhost:11434
-Environment=OLLAMA_MODEL=qwen3:8b
+Environment=OLLAMA_MODEL=qwen3.5:4b
 
 [Install]
 WantedBy=default.target

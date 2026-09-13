@@ -81,6 +81,58 @@ def test_status_describes_both_engines(logged_in, machine):
     assert engines["nemotron"]["label"] == "NVIDIA Nemotron"
 
 
+# --- The default set in the environment ---------------------------------------
+
+@pytest.fixture
+def engine_default(monkeypatch):
+    """Set AUC_RETRIEVAL_ENGINE_DEFAULT. config reads the environment once, at
+    import time, so the name has to be replaced where the module holds it."""
+    import retrieval_engine
+
+    def set_to(value):
+        monkeypatch.setattr(retrieval_engine, "RETRIEVAL_ENGINE_DEFAULT", value)
+
+    return set_to
+
+
+def test_the_environment_default_picks_standard_on_a_spark(logged_in, machine, engine_default):
+    """What the installer writes on a Spark whose Nemotron containers would not
+    start: summaries work from the first minute rather than failing against an
+    engine that is not running."""
+    machine["spark"] = True
+    engine_default("ollama")
+    status = logged_in.get("/api/rag/status").json()
+
+    assert status["engine"] == "ollama"
+    assert status["default_engine"] == "ollama"
+    assert status["is_spark"] is True
+
+
+def test_the_environment_default_picks_nemotron_on_another_machine(logged_in, machine, engine_default):
+    engine_default("nemotron")
+    status = logged_in.get("/api/rag/status").json()
+
+    assert status["engine"] == "nemotron"
+    assert status["default_engine"] == "nemotron"
+
+
+def test_a_choice_made_in_settings_beats_the_environment_default(logged_in, machine, engine_default):
+    engine_default("nemotron")
+    response = logged_in.put("/api/rag/engine", json={"engine": "ollama"})
+
+    assert response.status_code == 200, response.text
+    assert logged_in.get("/api/rag/status").json()["engine"] == "ollama"
+
+
+def test_an_unknown_environment_default_is_ignored(logged_in, machine, engine_default):
+    """A typo there must leave the hardware rule in charge, not the app without
+    an engine at all."""
+    machine["spark"] = True
+    engine_default("nemotron-lightning")
+
+    assert logged_in.get("/api/rag/status").json()["default_engine"] == "nemotron"
+
+
 # --- Switching ----------------------------------------------------------------
 
 def test_a_choice_made_in_settings_outlives_the_default(logged_in, machine):

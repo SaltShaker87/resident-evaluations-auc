@@ -16,6 +16,28 @@ A local-first residency feedback management tool for internal medicine programs.
 > determinations. See `auc/README.md` for how summary generation and the evidence
 > check work.
 
+## Easiest Way: Use the Installer
+
+If you would rather not type commands, download the installer from the
+[Releases page](https://github.com/SaltShaker87/resident-evaluations-auc/releases)
+and double-click it:
+
+| Your machine | Download |
+|---|---|
+| An Ubuntu PC | `AUC-Installer-…-linux-x86_64.deb` |
+| NVIDIA DGX Spark or HP ZGX Nano | `AUC-Installer-…-linux-aarch64.deb` |
+| If the `.deb` does not open | the matching `.AppImage` |
+
+It checks the computer, asks three questions (AI summaries on or off and
+which model; whether other computers on the network may connect; on a Spark,
+the free NVIDIA account key needed to download the Nemotron models once),
+installs everything, and opens AUC in your browser. Python and Node.js do
+**not** need to be installed first — the installer brings its own. Open the
+installer again later to update, repair or remove AUC.
+
+Everything below is the manual route, which still works and is what the
+installer does under the hood.
+
 ## Requirements
 
 Before running setup, make sure you have:
@@ -26,8 +48,12 @@ Before running setup, make sure you have:
    - If you don't have it: `sudo apt install nodejs npm`
 4. **Ollama** (optional, for AI summaries) — install from https://ollama.ai
    - After installing, pull a generation model — any will do, e.g.
-     `ollama pull qwen3:8b` — and the embedding model, whose name must
+     `ollama pull qwen3.5:4b` — and the embedding model, whose name must
      match exactly: `ollama pull qwen3-embedding:0.6b`
+   - Pick the generation model to match your graphics card's memory: 8–15 GB
+     `qwen3.5:4b`, 16–32 GB `qwen3.5:9b`, over 32 GB `nemotron-3.5-lightning`.
+     AUC runs best on NVIDIA Nemotron 3.5 Lightning. The installer picks this
+     for you.
 5. **On an NVIDIA DGX Spark only:** an NGC API key, for a one-time login when
    setup downloads NVIDIA's Nemotron retrieval models (free, from
    ngc.nvidia.com). Setup recognises the Spark by itself and asks for it. See
@@ -147,9 +173,28 @@ is research provenance, so copy it deliberately.
 A backup you have never restored is a hope, not a backup — run
 `bash auc/verify-backup.sh`, which opens the newest one and checks it.
 
+## Where an Installer Install Lives
+
+The installer keeps AUC apart from your data so that updating can never touch
+the database:
+
+```
+~/.local/share/auc/
+├── app/current/      ← the running version (a link to app/<version>/)
+├── data/             ← auc.db, photos/, logs/ — never removed by an update
+├── backups/          ← the nightly backup's default destination
+└── tools/            ← the installer's private Python and uv
+~/.config/auc/auc.env ← every setting, one KEY=VALUE per line
+```
+
+The manual route below installs into the folder you cloned instead. Both use
+the same systemd units, so `systemctl --user status auc` works either way.
+
 ## File Structure
 
 ```
+installer/            ← the graphical installer (see installer/README.md)
+.github/workflows/    ← builds the release archive and the installer on each tag
 auc/
 ├── setup.sh          ← run this once to set everything up
 ├── run.sh            ← created by setup, starts the app
@@ -161,10 +206,12 @@ auc/
 ├── start-nemotron.sh ← start the NVIDIA Nemotron containers (setup runs it on a Spark)
 ├── nim/              ← those two containers, defined for docker compose
 ├── .env.example      ← every environment variable, with a comment each
+├── VERSION           ← written by the release workflow; absent in a clone
 ├── README.md         ← the fuller manual
 ├── backend/
 │   ├── app.py        ← the Python server
 │   ├── config.py     ← every environment variable is read here
+│   ├── fonts/        ← DejaVu, bundled so PDFs look the same on every machine
 │   ├── requirements.txt
 │   ├── tests/        ← run with check.sh
 │   └── venv/         ← created by setup

@@ -289,14 +289,40 @@ app.include_router(auth.router)
 app.include_router(ccc.router)
 
 
+# The routes that answer without a session. /api/auth/* must, or nobody could
+# ever log in. /api/version must too: the installer asks it to confirm what it
+# just put on the machine, which happens before anyone has set a password.
+PUBLIC_API_PATHS = ("/api/auth/", "/api/version")
+
+
 @app.middleware("http")
 async def require_auth(request: Request, call_next):
-    """Every /api/* route except /api/auth/* requires a valid session."""
+    """Every /api/* route except the public ones requires a valid session."""
     path = request.url.path
-    if path.startswith("/api/") and not path.startswith("/api/auth/"):
+    if path.startswith("/api/") and not path.startswith(PUBLIC_API_PATHS):
         if not auth.is_authenticated(request):
             return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
     return await call_next(request)
+
+# ---------------------------------------------------------------------------
+# Version
+# ---------------------------------------------------------------------------
+
+VERSION_FILE = BASE_DIR / "VERSION"
+
+
+@app.get("/api/version")
+def get_version():
+    """Which build of AUC this is.
+
+    The release workflow writes auc/VERSION into the archive it publishes. A
+    clone of the repository has no such file, so working from a checkout
+    reports "dev" rather than claiming a release it is not.
+    """
+    try:
+        return {"version": VERSION_FILE.read_text(encoding="utf-8").strip() or "dev"}
+    except OSError:
+        return {"version": "dev"}
 
 # ---------------------------------------------------------------------------
 # Resident endpoints

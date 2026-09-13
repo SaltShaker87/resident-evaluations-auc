@@ -15,6 +15,9 @@ decides WHICH one is used:
     failure this app refuses elsewhere. A chosen engine that is down is an error
     that says so.
 
+    AUC_RETRIEVAL_ENGINE_DEFAULT overrides that hardware rule, for the installer
+    to name a starting engine it knows works on this machine. See config.py.
+
   * A switch is refused unless this machine can run the engine right now and its
     index is built. "Can run" is tested rather than assumed from the hardware, so
     a program with its own NVIDIA server can run the Nemotron containers too.
@@ -27,7 +30,14 @@ import subprocess
 
 import httpx
 import rag_retrieval
-from config import DATA_DIR, EMBED_MODEL, NIM_EMBED_URL, NIM_RERANK_URL, OLLAMA_URL
+from config import (
+    DATA_DIR,
+    EMBED_MODEL,
+    NIM_EMBED_URL,
+    NIM_RERANK_URL,
+    OLLAMA_URL,
+    RETRIEVAL_ENGINE_DEFAULT,
+)
 from rag_retrieval import ENGINES, LABELS, NEMOTRON, OLLAMA
 
 SETTING_KEY = "retrieval_engine"
@@ -80,6 +90,16 @@ def is_spark():
 
 
 def default_engine():
+    """The engine with nothing chosen in Settings.
+
+    AUC_RETRIEVAL_ENGINE_DEFAULT overrides the hardware rule, because a Spark
+    whose Nemotron containers would not start during installation would
+    otherwise default to an engine that is not running and fail every summary.
+    An unrecognised name is ignored rather than trusted — a typo in the
+    environment must not leave the app with no engine at all.
+    """
+    if RETRIEVAL_ENGINE_DEFAULT in ENGINES:
+        return RETRIEVAL_ENGINE_DEFAULT
     return NEMOTRON if is_spark() else OLLAMA
 
 

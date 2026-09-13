@@ -25,8 +25,11 @@ Before running setup, make sure you have:
    - If you don't have it: `sudo apt install nodejs npm`
 4. **Ollama** (optional, for AI summaries) — install from https://ollama.ai
    - After installing, pull a generation model — any will do, e.g.
-     `ollama pull qwen3:8b` — and the embedding model, whose name must
+     `ollama pull qwen3.5:4b` — and the embedding model, whose name must
      match exactly: `ollama pull qwen3-embedding:0.6b`
+   - Pick the generation model to match your graphics card's memory: 8–15 GB
+     `qwen3.5:4b`, 16–32 GB `qwen3.5:9b`, over 32 GB `nemotron-3.5-lightning`.
+     AUC runs best on NVIDIA Nemotron 3.5 Lightning.
 5. **On an NVIDIA DGX Spark only:** an NGC API key (free, from ngc.nvidia.com)
    for a one-time `docker login nvcr.io` when setup downloads the NVIDIA
    Nemotron retrieval models. Setup recognises the Spark by itself and asks.
@@ -356,6 +359,7 @@ auc/
 ├── start-nemotron.sh ← start the NVIDIA Nemotron containers (setup runs it on a Spark)
 ├── nim/              ← those two containers, defined for docker compose
 ├── .env.example      ← every environment variable, with a comment each
+├── VERSION           ← written by the release workflow; absent in a clone
 ├── README.md         ← you are here
 ├── SECURITY.md       ← record of security measures + password recovery
 ├── BACKUPS.md        ← exporting PDFs + backup/restore + OneDrive setup

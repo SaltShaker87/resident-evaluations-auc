@@ -1,0 +1,50 @@
+[package]
+name = "auc-installer"
+version = "0.1.0"
+description = "Installs, updates and removes AUC — Assessments Under Curve"
+authors = ["AUC contributors"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "auc_installer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Blocking HTTP on purpose: the engine is a sequence of slow steps run on its
+# own thread, so an async runtime would buy nothing and cost readability.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+sha2 = "0.10"
+hex = "0.4"
+flate2 = "1"
+tar = "0.4"
+dirs = "5"
+anyhow = "1"
+thiserror = "1"
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["clock"] }
+rpassword = "7"
+which = "6"
+tempfile = "3"
+
+# statvfs (free disk space) and the numeric user id the containers run as.
+# Unix only; the Windows build never asks for either.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["fs", "user"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -91,6 +91,17 @@ def test_rag_status_endpoint_answers_without_an_index(logged_in):
     assert body["configured_model"]
 
 
+def test_the_version_endpoint_answers_without_a_login(client, app_module, monkeypatch, tmp_path):
+    """The installer asks which version it just put on the machine, which
+    happens before anyone has set a password. A checkout has no VERSION file,
+    so it says "dev" rather than claiming a release it is not."""
+    monkeypatch.setattr(app_module, "VERSION_FILE", tmp_path / "VERSION")
+    assert client.get("/api/version").json() == {"version": "dev"}
+
+    (tmp_path / "VERSION").write_text("1.4.0\n", encoding="utf-8")
+    assert client.get("/api/version").json() == {"version": "1.4.0"}
+
+
 def test_the_path_traversal_hole_stays_closed(logged_in):
     """SECURITY.md records this one: /../data/auc.db once served the database."""
     response = logged_in.get("/../data/auc.db")

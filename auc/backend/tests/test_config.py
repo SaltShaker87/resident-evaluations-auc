@@ -25,7 +25,7 @@ def reloaded_config(monkeypatch):
 
 
 def test_defaults_are_what_the_machine_has_always_used(reloaded_config, monkeypatch):
-    for key in ("AUC_HOST", "AUC_PORT", "AUC_EMBED_MODEL", "OLLAMA_URL"):
+    for key in ("AUC_HOST", "AUC_PORT", "AUC_EMBED_MODEL", "OLLAMA_URL", "OLLAMA_MODEL"):
         monkeypatch.delenv(key, raising=False)
     config = reloaded_config()
 
@@ -33,6 +33,9 @@ def test_defaults_are_what_the_machine_has_always_used(reloaded_config, monkeypa
     assert config.PORT == 3000
     assert config.OLLAMA_URL == "http://localhost:11434"
     assert config.EMBED_MODEL == "qwen3-embedding:0.6b"
+    # A model anyone can pull. The default must never be a private fine-tune
+    # again: on a machine that does not have it, every summary fails.
+    assert config.OLLAMA_MODEL == "qwen3.5:4b"
 
 
 def test_host_and_port_can_be_overridden(reloaded_config):

@@ -226,10 +226,12 @@ else
     fail "Cannot write to $DATA_DIR/logs" "Summary runs log their quote validation here. Fix the permissions."
 fi
 
-if [ -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ]; then
-    pass "DejaVu fonts installed (PDF export renders dashes and curly quotes)"
+if [ -f "$BACKEND/fonts/DejaVuSans.ttf" ]; then
+    pass "DejaVu fonts bundled with the app (PDF export renders dashes and curly quotes)"
+elif [ -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ]; then
+    pass "DejaVu fonts installed on the system (PDF export renders dashes and curly quotes)"
 else
-    warn "DejaVu fonts not installed" "sudo apt install fonts-dejavu-core — without it PDFs fall back to a basic font."
+    warn "DejaVu fonts not found" "sudo apt install fonts-dejavu-core — without it PDFs fall back to a basic font."
 fi
 
 # ---------------------------------------------------------------------------
@@ -241,14 +243,21 @@ if [ -x "$VENV_PY" ]; then
     EMBED_MODEL=$("$VENV_PY" -c "import sys; sys.path.insert(0, '$BACKEND'); import config; print(config.EMBED_MODEL)" 2>/dev/null)
 
     # The engine in force, by the app's own rule: the choice made in Settings,
-    # or the default for this hardware. The database is opened immutable.
+    # or AUC_RETRIEVAL_ENGINE_DEFAULT, or the default for this hardware. The
+    # database is opened immutable.
     ENGINE_INFO=$("$VENV_PY" -c "
 import sys
 sys.path.insert(0, '$BACKEND')
+import config
 import retrieval_engine as r
 stored = r.stored_on_disk()
 print(r.resolve(stored))
-print('chosen in Settings' if stored else 'the default for this machine')
+if stored in r.ENGINES:
+    print('chosen in Settings')
+elif config.RETRIEVAL_ENGINE_DEFAULT in r.ENGINES:
+    print('the default set in the environment')
+else:
+    print('the default for this machine')
 print('yes' if r.is_spark() else 'no')
 " 2>/dev/null)
     ENGINE=$(echo "$ENGINE_INFO" | sed -n '1p')
@@ -276,7 +285,7 @@ if MODELS=$(curl -sf --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null); then
     NAMES=$(echo "$MODELS" | "$VENV_PY" -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" 2>/dev/null)
     COUNT=$(echo "$NAMES" | grep -c . || true)
     if [ "${COUNT:-0}" -eq 0 ]; then
-        fail "Ollama is running but has no models" "Pull one: ollama pull qwen3:8b"
+        fail "Ollama is running but has no models" "Pull one: ollama pull qwen3.5:4b"
     else
         pass "Ollama answering at $OLLAMA_URL — $COUNT models"
 

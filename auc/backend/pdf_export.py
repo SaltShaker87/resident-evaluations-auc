@@ -32,15 +32,22 @@ DRAFT_DISCLAIMER = (
     "not final determinations."
 )
 
-# A system DejaVu font gives us full Unicode (smart quotes, em-dashes, etc.).
-# It ships with most Linux distros; if it's missing we fall back to the core
-# Helvetica font and transliterate non-Latin-1 characters instead.
+# A DejaVu font gives us full Unicode (smart quotes, em-dashes, etc.). It
+# ships with the app, in backend/fonts/, so a PDF looks the same on every
+# machine — a Linux box without fonts-dejavu-core, a Mac, a Windows PC — rather
+# than depending on what the operating system happens to have installed. The
+# system paths stay as fallbacks for an install that somehow lacks the bundle;
+# with neither, we fall back to the core Helvetica font and transliterate
+# non-Latin-1 characters instead.
+_BUNDLED_FONTS = Path(__file__).resolve().parent / "fonts"
 _DEJAVU_CANDIDATES = [
+    _BUNDLED_FONTS / "DejaVuSans.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
 ]
 _DEJAVU_BOLD_CANDIDATES = [
+    _BUNDLED_FONTS / "DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
