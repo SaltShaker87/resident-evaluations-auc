@@ -114,6 +114,7 @@ jobs:
           mv installer/src-tauri/tauri.conf.json.tmp installer/src-tauri/tauri.conf.json
           sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" installer/src-tauri/Cargo.toml
 
+      # xdg-utils: ARM runners do not ship xdg-open; Tauri's AppImage bundler needs it.
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
@@ -127,7 +128,8 @@ jobs:
             file \
             libssl-dev \
             libayatana-appindicator3-dev \
-            libxdo-dev
+            libxdo-dev \
+            xdg-utils
 
       - uses: actions/setup-node@v4
         with:
