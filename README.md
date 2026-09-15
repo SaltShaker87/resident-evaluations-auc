@@ -223,3 +223,9 @@ auc/
     ├── photos/       ← resident photos
     └── logs/         ← what the AI claimed vs. what survived validation
 ```
+
+## License
+
+AUC is released under the [MIT License](LICENSE). The bundled fonts keep their
+own licenses (see the `fonts/` folders), and the AI models AUC downloads,
+through Ollama and NVIDIA NGC, are covered by their own terms.
