@@ -94,6 +94,14 @@ fn recommended_model(memory_gb: Option<f64>) -> Option<&'static str> {
 fn ai_recommendation(system: &SystemInfo, choice: Option<&'static str>) -> AiRecommendation {
     let label = choice.and_then(label_for);
     match (choice, label, system.gpu.memory_gb) {
+        (Some(_), Some(label), Some(gb)) if system.gpu.memory_unified => AiRecommendation {
+            recommended: true,
+            reason: format!(
+                "This machine has {} GB of memory shared between its processor and graphics, \
+                 which is enough for {label}.",
+                format_gb(gb)
+            ),
+        },
         (Some(_), Some(label), Some(gb)) => AiRecommendation {
             recommended: true,
             reason: format!(
@@ -233,6 +241,7 @@ mod tests {
             name: Some("test GPU".to_string()),
             memory_gb,
             is_gb10,
+            memory_unified: false,
         };
         system
     }
@@ -292,6 +301,22 @@ mod tests {
     fn a_spark_gets_nemotron() {
         let spark = machine(GpuVendor::Nvidia, Some(120.0), true);
         assert_eq!(chosen(&spark).as_deref(), Some(MODEL_NEMOTRON));
+    }
+
+    #[test]
+    fn a_spark_whose_memory_is_shared_says_so_and_still_gets_nemotron() {
+        let mut spark = machine(GpuVendor::Nvidia, Some(128.0), true);
+        spark.gpu.memory_unified = true;
+        let rec = recommend(&spark);
+        assert_eq!(rec.default_model(), Some(MODEL_NEMOTRON));
+        assert!(rec.ai.recommended);
+        assert!(
+            rec.ai.reason.contains("128 GB of memory shared"),
+            "{}",
+            rec.ai.reason
+        );
+        assert!(rec.models.iter().all(|m| m.fits), "128 GB fits every model");
+        assert_eq!(rec.nemotron.mode, NemotronMode::Default);
     }
 
     #[test]

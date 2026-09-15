@@ -21,6 +21,7 @@ impl Platform for LinuxPlatform {
         system.distro = detect::read_os_release();
         system.gpu = detect::detect_gpu();
         system.memory_gb = detect::read_memory_gb();
+        detect::fill_unified_memory(&mut system.gpu, system.memory_gb);
         system.tools = detect::detect_tools();
         system.internet = detect::has_internet();
 

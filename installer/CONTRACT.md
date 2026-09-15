@@ -52,6 +52,10 @@ $AUC_HOME = ~/.local/share/auc
 ~/.config/systemd/user/auc-backup.service
 ~/.config/systemd/user/auc-backup.timer
 ~/.local/share/applications/auc.desktop      an "AUC" menu icon that opens the app URL
+~/.local/share/icons/hicolor/256x256/apps/auc.png   the AUC emblem the menu icon and shortcut show
+~/Desktop/auc.desktop                        the same entry as a Desktop shortcut (the folder named by
+                                             XDG_DESKTOP_DIR in ~/.config/user-dirs.dirs; skipped if
+                                             the machine has no Desktop folder)
 ~/.cache/nim/                                Nemotron model weights (matches start-nemotron.sh)
 ```
 
@@ -178,7 +182,10 @@ events.
     vendor: "nvidia" | "amd" | "apple" | "none",
     name: string | null,              // e.g. "NVIDIA GB10", "NVIDIA GeForce RTX 3090"
     memory_gb: number | null,         // total across GPUs for NVIDIA; null if unknown
-    is_gb10: boolean                  // same rule as backend/retrieval_engine.py is_spark()
+    is_gb10: boolean,                 // same rule as backend/retrieval_engine.py is_spark()
+    memory_unified: boolean           // memory_gb is the machine's shared memory (a GB10 reports
+                                      // "[N/A]" for its own, so the machine's total stands in,
+                                      // rounded up to the size it was sold as, e.g. 128)
   },
   memory_gb: number,
   disk_free_gb: number,               // at $AUC_HOME's filesystem
@@ -334,7 +341,7 @@ Notes on behaviour the engine settled on:
 | `docker` | Setting up Docker for NVIDIA Nemotron | skipped unless `nemotron_enabled`; Docker, compose, NVIDIA Container Toolkit, docker group |
 | `nemotron` | Starting NVIDIA Nemotron | login, pull, up, wait for `/v1/health/ready`; on failure becomes `warning` and sets `nemotron_pending` |
 | `index` | Building the ACGME reference index | `rag/build_index.py` (all engines it can reach) |
-| `autostart` | Setting up auto-start | units, `daemon-reload`, `enable`, linger, desktop icon |
+| `autostart` | Setting up auto-start | units, `daemon-reload`, `enable`, linger, AUC icon, menu entry, Desktop shortcut |
 | `start` | Starting AUC | `systemctl --user restart auc`, wait for `/api/auth/status` |
 | `preflight` | Checking everything works | runs `preflight.sh`, emits `auc://preflight` |
 
@@ -348,7 +355,7 @@ one), `preflight`.
 (removes `AUC_RETRIEVAL_ENGINE_DEFAULT`), `start`, `preflight`.
 
 **uninstall**: `stop` (units and containers), `remove_autostart`,
-`remove_app` (app/, tools/, desktop icon, state), `remove_data` (skipped unless
+`remove_app` (app/, tools/, menu entry, Desktop shortcut, AUC icon, state), `remove_data` (skipped unless
 `delete_data`), `remove_nemotron_cache` (skipped unless `delete_nemotron_cache`).
 Ollama and Docker are left installed; the summary says so.
 

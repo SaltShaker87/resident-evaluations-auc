@@ -124,7 +124,40 @@ pub fn parse_nvidia_smi(text: &str) -> Option<GpuInfo> {
             None
         },
         is_gb10,
+        memory_unified: false,
     })
+}
+
+/// A GB10 (DGX Spark, HP ZGX Nano) has no graphics memory of its own: the
+/// processor and the graphics chip share one pool, and nvidia-smi answers
+/// "[N/A]" when asked how big the card's memory is. Without this the
+/// installer would say "graphics memory unknown", offer no model, and refuse
+/// to install on the very machine AUC was built for.
+///
+/// So on a GB10 that would not say, the machine's own memory is the answer.
+pub fn fill_unified_memory(gpu: &mut GpuInfo, system_memory_gb: f64) {
+    if gpu.is_gb10 && gpu.memory_gb.is_none() && system_memory_gb > 0.0 {
+        gpu.memory_gb = Some(nominal_memory_gb(system_memory_gb));
+        gpu.memory_unified = true;
+    }
+}
+
+/// The number on the box. Linux reports a little less memory than is fitted,
+/// because the kernel and (on a GB10) the graphics driver reserve some before
+/// anyone can count it — a 128 GB Spark shows about 122 GB. When the measured
+/// figure sits just under a size memory is actually sold in, that size is what
+/// the screens should say; anything else is reported as measured.
+pub fn nominal_memory_gb(measured_gb: f64) -> f64 {
+    const SOLD_IN_GB: [f64; 17] = [
+        4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0, 192.0, 256.0, 384.0, 512.0,
+        768.0, 1024.0,
+    ];
+    for size in SOLD_IN_GB {
+        if measured_gb <= size && measured_gb >= size * 0.90 {
+            return size;
+        }
+    }
+    measured_gb.round()
 }
 
 /// What the GPU is, as far as we can tell without installing anything.
@@ -150,6 +183,7 @@ pub fn detect_gpu() -> GpuInfo {
             name: None,
             memory_gb: None,
             is_gb10: false,
+            memory_unified: false,
         };
     }
     GpuInfo::none()
@@ -434,6 +468,60 @@ ID_LIKE="ubuntu debian"
         let gpu = parse_nvidia_smi("NVIDIA GeForce RTX 3090, [N/A]\n").expect("should parse");
         assert_eq!(gpu.memory_gb, None);
         assert_eq!(gpu.vendor, GpuVendor::Nvidia);
+        assert!(!gpu.memory_unified);
+    }
+
+    #[test]
+    fn a_spark_that_will_not_say_gets_the_machines_memory_instead() {
+        // What a real ZGX Nano answers: the chip, and [N/A] for its memory.
+        let mut gpu = parse_nvidia_smi("NVIDIA GB10, [N/A]\n").expect("should parse");
+        assert_eq!(gpu.memory_gb, None);
+        fill_unified_memory(&mut gpu, 121.7);
+        assert_eq!(gpu.memory_gb, Some(128.0));
+        assert!(gpu.memory_unified);
+    }
+
+    #[test]
+    fn a_spark_that_does_say_is_left_alone() {
+        let mut gpu = parse_nvidia_smi("NVIDIA GB10, 122880\n").expect("should parse");
+        fill_unified_memory(&mut gpu, 121.7);
+        assert_eq!(gpu.memory_gb, Some(120.0));
+        assert!(!gpu.memory_unified);
+    }
+
+    #[test]
+    fn an_ordinary_card_never_borrows_the_machines_memory() {
+        let mut gpu = parse_nvidia_smi("NVIDIA GeForce RTX 3090, [N/A]\n").expect("should parse");
+        fill_unified_memory(&mut gpu, 64.0);
+        assert_eq!(
+            gpu.memory_gb, None,
+            "a 3090 with 64 GB of RAM is not a 64 GB card"
+        );
+        assert!(!gpu.memory_unified);
+    }
+
+    #[test]
+    fn unknown_machine_memory_is_not_turned_into_a_number() {
+        let mut gpu = parse_nvidia_smi("NVIDIA GB10, [N/A]\n").expect("should parse");
+        fill_unified_memory(&mut gpu, 0.0);
+        assert_eq!(gpu.memory_gb, None);
+    }
+
+    #[test]
+    fn measured_memory_is_rounded_up_to_the_size_it_was_sold_as() {
+        assert_eq!(nominal_memory_gb(121.7), 128.0, "a 128 GB Spark");
+        assert_eq!(nominal_memory_gb(125.8), 128.0);
+        assert_eq!(nominal_memory_gb(128.0), 128.0);
+        assert_eq!(nominal_memory_gb(62.7), 64.0, "a 64 GB desktop");
+        assert_eq!(nominal_memory_gb(15.5), 16.0);
+        assert_eq!(nominal_memory_gb(7.7), 8.0);
+    }
+
+    #[test]
+    fn memory_well_short_of_a_standard_size_is_reported_as_measured() {
+        // 100 GB is 22% under 128 and 4% over 96: neither, so say what we saw.
+        assert_eq!(nominal_memory_gb(100.0), 100.0);
+        assert_eq!(nominal_memory_gb(20.4), 20.0);
     }
 
     #[test]

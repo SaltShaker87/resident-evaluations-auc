@@ -1,5 +1,6 @@
 import { openUrl } from '../backend.js';
 import { SECURITY_URL } from '../utils.js';
+import NgcKeyHelp from '../components/NgcKeyHelp.jsx';
 
 export default function Choices({
   system,
@@ -60,7 +61,10 @@ export default function Choices({
                 <span className="radio-card__desc">{m.description}</span>
                 {!m.fits && (
                   <span className="radio-card__warn">
-                    Needs more than {m.min_memory_gb - 1} GB of graphics card memory; this computer has {system?.gpu?.memory_gb ?? 0} GB.
+                    Needs more than {m.min_memory_gb - 1} GB of graphics card memory;{' '}
+                    {system?.gpu?.memory_gb != null
+                      ? `this computer has ${system.gpu.memory_gb} GB.`
+                      : 'this computer would not say how much it has.'}
                   </span>
                 )}
               </label>
@@ -102,13 +106,7 @@ export default function Choices({
               )}
               {choices.nemotron_enabled && (
                 <div className="ngc-block">
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    onClick={() => openUrl('https://ngc.nvidia.com')}
-                  >
-                    Open NVIDIA account site
-                  </button>
+                  <NgcKeyHelp />
                   <label className="field-label" htmlFor="ngc-key">
                     Paste your NVIDIA API key (optional now)
                   </label>

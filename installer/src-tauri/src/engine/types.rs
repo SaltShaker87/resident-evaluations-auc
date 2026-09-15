@@ -36,6 +36,11 @@ pub struct GpuInfo {
     pub memory_gb: Option<f64>,
     /// The same rule as `backend/retrieval_engine.py is_spark()`.
     pub is_gb10: bool,
+    /// True when `memory_gb` is the machine's memory rather than a graphics
+    /// card's own: a GB10 has one pool shared by processor and graphics, and
+    /// nvidia-smi reports it as "[N/A]".
+    #[serde(default)]
+    pub memory_unified: bool,
 }
 
 impl GpuInfo {
@@ -45,6 +50,7 @@ impl GpuInfo {
             name: None,
             memory_gb: None,
             is_gb10: false,
+            memory_unified: false,
         }
     }
 }

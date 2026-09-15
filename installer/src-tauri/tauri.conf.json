@@ -32,9 +32,9 @@
     "shortDescription": "Installs AUC — Assessments Under Curve",
     "longDescription": "Checks this computer, installs what is missing, downloads AUC and sets it up to start with the machine. Also updates and removes it.",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/128x128.png",
+      "icons/32x32.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],

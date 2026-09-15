@@ -398,6 +398,41 @@ html, body, #root {
   align-items: flex-start;
 }
 
+.ngc-help {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.ngc-help__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+/* Numbered, roomy, and in full sentences: this is read by someone who has
+   never made an account on a developer website. */
+.ngc-steps {
+  margin: 0.25rem 0 0.5rem 1.5rem;
+  padding: 0.75rem 1rem 0.75rem 1.5rem;
+  background: var(--slate-100);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 34rem;
+}
+
+.ngc-steps li::marker {
+  font-weight: 600;
+  color: var(--blue-700);
+}
+
 .field-label {
   font-size: 0.8125rem;
   font-weight: 500;

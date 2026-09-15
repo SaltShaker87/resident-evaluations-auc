@@ -31,8 +31,20 @@ export default function Checking({ system, recommendation, choices, onContinue, 
   });
 
   if (system.gpu.vendor === 'nvidia' && system.gpu.name) {
-    const mem = system.gpu.memory_gb != null ? `${system.gpu.memory_gb} GB graphics card memory` : 'graphics memory unknown';
-    rows.push({ tone: 'green', text: `Graphics card: ${system.gpu.name} (${mem}).` });
+    if (system.gpu.memory_unified) {
+      // A GB10 has one pool of memory for processor and graphics alike.
+      rows.push({
+        tone: 'green',
+        text: `Graphics: ${system.gpu.name}, with ${system.gpu.memory_gb} GB of memory shared between the processor and graphics.`,
+      });
+    } else if (system.gpu.memory_gb != null) {
+      rows.push({ tone: 'green', text: `Graphics card: ${system.gpu.name} (${system.gpu.memory_gb} GB graphics card memory).` });
+    } else {
+      rows.push({
+        tone: 'amber',
+        text: `Graphics card: ${system.gpu.name}, but it would not say how much memory it has. AI summaries can still be turned on, but the installer cannot promise they will fit.`,
+      });
+    }
   } else if (system.gpu.vendor === 'none') {
     rows.push({
       tone: 'amber',

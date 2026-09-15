@@ -161,7 +161,7 @@ function systemsByScenario() {
     distro: { id: 'ubuntu', version: '24.04', pretty: 'Ubuntu 24.04 LTS' },
     supported: true,
     unsupported_reason: null,
-    gpu: { vendor: 'nvidia', name: 'NVIDIA GB10', memory_gb: 128, is_gb10: true },
+    gpu: { vendor: 'nvidia', name: 'NVIDIA GB10', memory_gb: 128, is_gb10: true, memory_unified: true },
     memory_gb: 128,
     disk_free_gb: 420,
     internet: true,

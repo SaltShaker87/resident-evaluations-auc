@@ -1,4 +1,5 @@
-//! The `autostart` step: the three systemd units, lingering, and a menu icon.
+//! The `autostart` step: the three systemd units, lingering, a menu icon and
+//! a shortcut on the Desktop.
 //!
 //! The units are written with systemd's `%h` rather than an absolute home
 //! folder, so the same text is right on every machine. Lingering is the single
@@ -6,7 +7,7 @@
 //! someone is logged in at the console, which on a machine reached over SSH is
 //! never.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -115,19 +116,62 @@ pub fn render_units(paths: &UnitPaths) -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The AUC emblem — the same picture as the installer's own icon — written to
+/// disk for the menu entry and the Desktop shortcut to point at.
+const APP_ICON_PNG: &[u8] = include_bytes!("../../../icons/128x128@2x.png");
+
 /// The menu icon. `xdg-open` rather than a browser by name, so it opens
-/// whichever browser the user actually uses.
-pub fn render_desktop_file(port: &str) -> String {
+/// whichever browser the user actually uses. The icon is given by full path,
+/// which every desktop honours, rather than by name, which only some do.
+pub fn render_desktop_file(port: &str, icon: &Path) -> String {
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
          Name=AUC\n\
          Comment=Assessments Under Curve\n\
          Exec=xdg-open http://localhost:{port}\n\
-         Icon=web-browser\n\
+         Icon={}\n\
          Terminal=false\n\
-         Categories=Office;\n"
+         Categories=Office;\n",
+        icon.display()
     )
+}
+
+/// Which folder is the Desktop, according to `~/.config/user-dirs.dirs`:
+/// a line like `XDG_DESKTOP_DIR="$HOME/Desktop"`. None when the file does
+/// not say, so the caller can fall back to the plain default.
+pub fn parse_user_dirs_desktop(text: &str, home: &Path) -> Option<PathBuf> {
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(value) = line.strip_prefix("XDG_DESKTOP_DIR=") else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"');
+        if value.is_empty() {
+            return None;
+        }
+        let expanded = if let Some(rest) = value.strip_prefix("$HOME") {
+            home.join(rest.trim_start_matches('/'))
+        } else {
+            PathBuf::from(value)
+        };
+        return Some(expanded);
+    }
+    None
+}
+
+/// Where a shortcut on the Desktop would go, or None when this machine has
+/// no Desktop folder at all (a server, or a machine reached over SSH).
+pub fn desktop_shortcut(layout: &Layout) -> Option<PathBuf> {
+    let from_config = std::fs::read_to_string(layout.user_dirs_file())
+        .ok()
+        .and_then(|text| parse_user_dirs_desktop(&text, &layout.home));
+    let dir = from_config.unwrap_or_else(|| layout.home.join("Desktop"));
+    if dir.is_dir() {
+        Some(dir.join("auc.desktop"))
+    } else {
+        None
+    }
 }
 
 pub fn install(
@@ -138,7 +182,8 @@ pub fn install(
 ) -> Result<()> {
     ctx.progress.start(StepId::Autostart);
 
-    // The desktop icon is worth having either way, and costs nothing.
+    // The menu entry and Desktop shortcut are worth having either way, and
+    // cost nothing.
     write_desktop_file(ctx, port)?;
 
     if !systemd_user {
@@ -265,11 +310,20 @@ pub fn enable_linger(platform: &dyn Platform, ctx: &mut Ctx) -> Result<()> {
 }
 
 fn write_desktop_file(ctx: &mut Ctx, port: &str) -> Result<()> {
+    // The picture first, so the entry never points at something missing.
+    let icon = ctx.layout.icon_file();
+    if let Some(parent) = icon.parent() {
+        ensure_dir(parent)?;
+    }
+    std::fs::write(&icon, APP_ICON_PNG)
+        .with_context(|| format!("Could not write the AUC icon {}.", icon.display()))?;
+
+    let contents = render_desktop_file(port, &icon);
     let path = ctx.layout.desktop_file();
     if let Some(parent) = path.parent() {
         ensure_dir(parent)?;
     }
-    std::fs::write(&path, render_desktop_file(port))
+    std::fs::write(&path, &contents)
         .with_context(|| format!("Could not write the menu icon {}.", path.display()))?;
     ctx.log(format!("Wrote the AUC menu icon at {}.", path.display()));
 
@@ -282,7 +336,49 @@ fn write_desktop_file(ctx: &mut Ctx, port: &str) -> Result<()> {
                 .run(ctx.emitter.as_ref(), &ctx.cancel);
         }
     }
+
+    write_desktop_shortcut(ctx, &contents);
     Ok(())
+}
+
+/// The same entry again, on the Desktop, so AUC is one double-click away.
+/// Best effort: a machine with no Desktop folder simply does not get one,
+/// and a failure here is logged rather than allowed to fail the install.
+fn write_desktop_shortcut(ctx: &mut Ctx, contents: &str) {
+    let Some(path) = desktop_shortcut(&ctx.layout) else {
+        ctx.log("This machine has no Desktop folder, so no shortcut was put there.");
+        return;
+    };
+    if let Err(err) = std::fs::write(&path, contents) {
+        ctx.log(format!(
+            "Could not put a shortcut on the Desktop at {}: {err}",
+            path.display()
+        ));
+        return;
+    }
+    // Desktops refuse to launch a shortcut that is not marked executable...
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+    }
+    // ...and GNOME additionally wants it marked trusted, or it shows a
+    // warning and a "Allow Launching" step instead of the AUC icon.
+    if have("gio") {
+        let _ = Cmd::new("gio")
+            .args([
+                "set",
+                &path.display().to_string(),
+                "metadata::trusted",
+                "true",
+            ])
+            .quiet()
+            .run(ctx.emitter.as_ref(), &ctx.cancel);
+    }
+    ctx.log(format!(
+        "Put an AUC shortcut on the Desktop at {}.",
+        path.display()
+    ));
 }
 
 pub fn systemctl(ctx: &Ctx, args: &[&str], what: &str) -> Result<()> {
@@ -402,12 +498,58 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_icon_opens_the_port_the_app_is_on() {
-        let text = render_desktop_file("3100");
+    fn the_menu_icon_opens_the_port_the_app_is_on_and_shows_the_auc_emblem() {
+        let layout = Layout::rooted_at(Path::new("/home/you"));
+        let text = render_desktop_file("3100", &layout.icon_file());
         assert!(text.contains("Exec=xdg-open http://localhost:3100"));
         assert!(text.contains("Type=Application"));
         assert!(text.contains("Name=AUC"));
-        assert!(text.contains("Icon=web-browser"));
+        assert!(text.contains("Icon=/home/you/.local/share/icons/hicolor/256x256/apps/auc.png"));
         assert!(text.contains("Categories=Office;"));
+    }
+
+    #[test]
+    fn the_icon_written_to_disk_is_a_real_png() {
+        assert!(APP_ICON_PNG.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(APP_ICON_PNG.len() > 1000);
+    }
+
+    #[test]
+    fn the_desktop_folder_is_read_from_user_dirs() {
+        let home = Path::new("/home/you");
+        assert_eq!(
+            parse_user_dirs_desktop("XDG_DESKTOP_DIR=\"$HOME/Desktop\"\n", home),
+            Some(PathBuf::from("/home/you/Desktop"))
+        );
+        assert_eq!(
+            parse_user_dirs_desktop(
+                "# comment\nXDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\nXDG_DESKTOP_DIR=\"$HOME/Schreibtisch\"\n",
+                home
+            ),
+            Some(PathBuf::from("/home/you/Schreibtisch")),
+            "a German desktop calls it something else"
+        );
+        assert_eq!(
+            parse_user_dirs_desktop("XDG_DESKTOP_DIR=\"/data/desk\"\n", home),
+            Some(PathBuf::from("/data/desk"))
+        );
+        assert_eq!(
+            parse_user_dirs_desktop("XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n", home),
+            None
+        );
+        assert_eq!(parse_user_dirs_desktop("", home), None);
+    }
+
+    #[test]
+    fn no_desktop_folder_means_no_shortcut() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let layout = Layout::rooted_at(dir.path());
+        assert_eq!(desktop_shortcut(&layout), None);
+
+        std::fs::create_dir_all(dir.path().join("Desktop")).expect("mkdir");
+        assert_eq!(
+            desktop_shortcut(&layout),
+            Some(dir.path().join("Desktop/auc.desktop"))
+        );
     }
 }

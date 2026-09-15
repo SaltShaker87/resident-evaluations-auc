@@ -29,6 +29,7 @@ impl Platform for MacPlatform {
             name: None,
             memory_gb: None,
             is_gb10: false,
+            memory_unified: false,
         };
         if let Ok(layout) = Layout::detect() {
             system.disk_free_gb = detect::disk_free_gb(&layout.auc_home);

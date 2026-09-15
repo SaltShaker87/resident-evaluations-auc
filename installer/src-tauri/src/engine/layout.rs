@@ -106,6 +106,19 @@ impl Layout {
         self.home.join(".local/share/applications/auc.desktop")
     }
 
+    /// The AUC emblem the menu entry and the Desktop shortcut point at. In the
+    /// icon-theme folder so a desktop that looks icons up by name finds it too.
+    pub fn icon_file(&self) -> PathBuf {
+        self.home
+            .join(".local/share/icons/hicolor/256x256/apps/auc.png")
+    }
+
+    /// `~/.config/user-dirs.dirs`, where the desktop records which folder is
+    /// the Desktop (it is not always called that).
+    pub fn user_dirs_file(&self) -> PathBuf {
+        self.home.join(".config/user-dirs.dirs")
+    }
+
     /// The Nemotron model weights — the same folder start-nemotron.sh uses,
     /// so an install and a hand-started stack share one multi-gigabyte cache.
     pub fn nim_cache_dir(&self) -> PathBuf {

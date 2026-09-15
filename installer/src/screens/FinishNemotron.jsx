@@ -1,4 +1,4 @@
-import { openUrl } from '../backend.js';
+import NgcKeyHelp from '../components/NgcKeyHelp.jsx';
 
 export default function FinishNemotron({ ngcKey, ngcLater, onChange, onRun, onBack }) {
   return (
@@ -8,38 +8,34 @@ export default function FinishNemotron({ ngcKey, ngcLater, onChange, onRun, onBa
         Paste the API key from your free NVIDIA account. It is only used to download models
         once. Nothing is sent off this computer after setup.
       </p>
-      <button
-        type="button"
-        className="btn btn--secondary btn--sm"
-        onClick={() => openUrl('https://ngc.nvidia.com')}
-      >
-        Open NVIDIA account site
-      </button>
-      <label className="field-label" htmlFor="finish-ngc-key">
-        NVIDIA API key
-      </label>
-      <input
-        id="finish-ngc-key"
-        type="password"
-        className="input"
-        autoComplete="off"
-        value={ngcKey || ''}
-        disabled={ngcLater}
-        onChange={(e) => onChange({ ngc_key: e.target.value || null, ngc_key_later: false })}
-      />
-      <label className="toggle-row">
+      <div className="ngc-block">
+        <NgcKeyHelp />
+        <label className="field-label" htmlFor="finish-ngc-key">
+          NVIDIA API key
+        </label>
         <input
-          type="checkbox"
-          checked={ngcLater}
-          onChange={(e) =>
-            onChange({
-              ngc_key_later: e.target.checked,
-              ngc_key: e.target.checked ? null : ngcKey,
-            })
-          }
+          id="finish-ngc-key"
+          type="password"
+          className="input"
+          autoComplete="off"
+          value={ngcKey || ''}
+          disabled={ngcLater}
+          onChange={(e) => onChange({ ngc_key: e.target.value || null, ngc_key_later: false })}
         />
-        <span>Do this later (try cached images only)</span>
-      </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={ngcLater}
+            onChange={(e) =>
+              onChange({
+                ngc_key_later: e.target.checked,
+                ngc_key: e.target.checked ? null : ngcKey,
+              })
+            }
+          />
+          <span>Do this later (try cached images only)</span>
+        </label>
+      </div>
       <div className="screen-actions screen-actions--split">
         <button type="button" className="btn btn--secondary" onClick={onBack}>
           Back

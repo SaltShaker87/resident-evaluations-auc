@@ -600,6 +600,7 @@ mod tests {
             name: Some("NVIDIA GB10".to_string()),
             memory_gb: Some(120.0),
             is_gb10: true,
+            memory_unified: false,
         };
         system.tools = Tools {
             ollama: OllamaTool {

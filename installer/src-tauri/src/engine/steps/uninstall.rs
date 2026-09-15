@@ -116,6 +116,20 @@ fn remove_app(ctx: &mut Ctx) -> Result<()> {
             }
         }
     }
+    if let Some(shortcut) = autostart::desktop_shortcut(&ctx.layout) {
+        if shortcut.exists() {
+            let _ = std::fs::remove_file(&shortcut);
+            ctx.log(format!(
+                "Removed the Desktop shortcut {}.",
+                shortcut.display()
+            ));
+        }
+    }
+    let icon = ctx.layout.icon_file();
+    if icon.exists() {
+        let _ = std::fs::remove_file(&icon);
+        ctx.log(format!("Removed the AUC icon {}.", icon.display()));
+    }
     state::remove(&ctx.layout)?;
     ctx.progress.done(StepId::RemoveApp);
     Ok(())
