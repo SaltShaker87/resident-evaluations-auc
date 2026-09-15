@@ -35,6 +35,10 @@ installs everything, and opens AUC in your browser. Python and Node.js do
 **not** need to be installed first — the installer brings its own. Open the
 installer again later to update, repair or remove AUC.
 
+If the installer window opens but stays blank (seen with installer 1.0.1 on
+NVIDIA machines), update to 1.0.2 or newer, or start it from a terminal with
+`WEBKIT_DISABLE_DMABUF_RENDERER=1 auc-installer`.
+
 Everything below is the manual route, which still works and is what the
 installer does under the hood.
 

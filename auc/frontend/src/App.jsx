@@ -13,6 +13,7 @@ import CccBanner from './ccc/CccBanner';
 import CccStartButton from './ccc/CccStartButton';
 import CccDrawerHost from './ccc/CccDrawerHost';
 import { getAuthStatus, logout } from './api';
+import aucMark from './assets/auc-mark.png';
 
 function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
@@ -95,7 +96,7 @@ export default function App() {
       <CccBanner />
       <header className="app-header">
         <Link to="/" className="app-header__brand">
-          <div className="app-header__logo">AUC</div>
+          <img className="app-header__logo" src={aucMark} alt="" />
           <div>
             <div className="app-header__title">AUC</div>
             <div className="app-header__subtitle">Assessments Under Curve</div>

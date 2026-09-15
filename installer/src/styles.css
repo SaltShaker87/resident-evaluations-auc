@@ -171,19 +171,34 @@ html, body, #root {
   margin-top: 0.5rem;
 }
 
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  background: var(--blue-600);
-  color: white;
-  border-radius: var(--radius-sm);
+/* The AUC logo artwork is drawn on black, so it gets a black panel of its own. */
+.brand-panel {
+  display: inline-block;
+  background: #000;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.25rem;
+  max-width: 320px;
+  margin-bottom: 1.25rem;
+}
+
+.brand-panel img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.partner-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.partner-row img {
+  height: 26px;
+  width: auto;
 }
 
 .screen-actions {

@@ -238,16 +238,9 @@ body {
 .app-header__logo {
   width: 36px;
   height: 36px;
-  background: var(--blue-600);
   border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.875rem;
-  letter-spacing: 0.5px;
+  object-fit: cover;
+  display: block;
 }
 
 .app-header__title {

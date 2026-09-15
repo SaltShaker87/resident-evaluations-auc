@@ -220,6 +220,7 @@ jobs:
             - **DGX Spark or HP ZGX Nano (ARM):** `AUC-Installer-*-linux-aarch64.deb`
             - **If the .deb will not open:** try the matching `.AppImage` for your processor (x86_64 or aarch64).
             - **Server or scripted install:** `auc-*.tar.gz` (verify with the `.sha256` file first).
+            - **If the installer window opens blank:** run `WEBKIT_DISABLE_DMABUF_RENDERER=1 auc-installer` from a terminal (fixed in 1.0.2 and newer).
 
             ---
 
