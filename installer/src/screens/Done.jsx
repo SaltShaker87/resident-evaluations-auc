@@ -2,8 +2,18 @@ import { useState } from 'react';
 import { openApp } from '../backend.js';
 import PreflightList from '../components/PreflightList.jsx';
 
+function nemotronReasonFrom(outcome) {
+  const warning = outcome.warnings?.find((w) => /nemotron|NVIDIA refused|sign in/i.test(w));
+  if (!warning) return null;
+  const fallbackAt = warning.indexOf('. AUC will write');
+  if (fallbackAt >= 0) return warning.slice(0, fallbackAt);
+  const firstDot = warning.indexOf('. ');
+  return firstDot >= 0 ? warning.slice(0, firstDot) : warning;
+}
+
 export default function Done({ outcome, preflight, onFinishNemotron }) {
   const [healthOpen, setHealthOpen] = useState(false);
+  const nemotronReason = outcome.nemotron_pending ? nemotronReasonFrom(outcome) : null;
 
   return (
     <div className="screen-content">
@@ -21,8 +31,9 @@ export default function Done({ outcome, preflight, onFinishNemotron }) {
       {outcome.nemotron_pending && (
         <div className="callout callout--amber">
           <p>
-            AI summaries are using the Standard engine for now. When you have your NVIDIA
-            API key, you can finish Nemotron setup.
+            AI summaries are using the Standard engine for now. The last attempt to start
+            NVIDIA Nemotron did not finish
+            {nemotronReason ? <>: {nemotronReason}</> : null}. You can try again from here.
           </p>
           <button type="button" className="btn btn--primary btn--sm" onClick={onFinishNemotron}>
             Finish Nemotron setup

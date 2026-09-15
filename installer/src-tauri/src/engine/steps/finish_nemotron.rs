@@ -62,9 +62,15 @@ pub fn run(platform: &dyn Platform, ctx: &mut Ctx, ngc_key: Option<&str>) -> Res
 
     Ok(FlowResult {
         summary: if ctx.nemotron_pending {
-            "The NVIDIA Nemotron containers still are not answering, so AUC is still using the \
-             Standard engine. The log says how far it got."
-                .to_string()
+            match ctx.warnings.first() {
+                Some(reason) => format!(
+                    "The NVIDIA Nemotron containers still are not answering, so AUC is still \
+                     using the Standard engine. {reason}"
+                ),
+                None => "The NVIDIA Nemotron containers still are not answering, so AUC is still \
+                         using the Standard engine. The log says how far it got."
+                    .to_string(),
+            }
         } else {
             "NVIDIA Nemotron is running, and AUC will use it for summaries from now on.".to_string()
         },

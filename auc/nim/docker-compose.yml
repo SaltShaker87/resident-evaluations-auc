@@ -14,9 +14,10 @@
 # network, and AUC must never be pointed at NVIDIA's hosted endpoints instead.
 #
 # The images come from NVIDIA's registry (nvcr.io), which needs a one-time
-# `docker login nvcr.io` with an NGC API key. The model weights download on the
-# first start into NIM_CACHE_DIR and are reused after that, so a restart,
-# including after a reboot, needs no network and no key.
+# `docker login nvcr.io` with an NGC API key. The model weights download from
+# NGC on the first start into NIM_CACHE_DIR (NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER=ngc)
+# and are reused after that, so a restart, including after a reboot, needs no
+# network and no key.
 #
 # The host ports must match AUC_NIM_EMBED_URL and AUC_NIM_RERANK_URL
 # (backend/config.py). Change both together or neither.
@@ -27,6 +28,9 @@ x-nim: &nim
   shm_size: 16gb
   user: "${NIM_UID:?start these with: bash auc/start-nemotron.sh}"
   environment:
+    # NVIDIA NIM 2.3 downloads weights from Hugging Face unless this is set.
+    # AUC collects an NGC key, so the containers must use NGC too.
+    - NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER=ngc
     # Passed through from the shell only if set; needed for the first
     # weights download, never stored here.
     - NGC_API_KEY

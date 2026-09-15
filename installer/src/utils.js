@@ -20,6 +20,11 @@ export async function copyToClipboard(text) {
   }
 }
 
+export function trimmedNgcKey(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || null;
+}
+
 export function defaultChoices(recommendation, system) {
   const recModel = recommendation.models.find((m) => m.recommended);
   const nemotronDefault =

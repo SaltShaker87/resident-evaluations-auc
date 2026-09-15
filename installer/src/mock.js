@@ -375,7 +375,7 @@ async function runSteps(action, options, scenario) {
         id: st.id,
         label: st.label,
         status: 'warning',
-        detail: 'Nemotron is not ready yet; summaries will use the Standard engine.',
+        detail: 'NVIDIA refused the key — tick NGC Catalog and accept the model pages once',
         progress: null,
       });
       emitLog('[mock] nemotron health check timed out — will finish later');
@@ -446,7 +446,9 @@ async function runSteps(action, options, scenario) {
       ? 'AUC has been removed. Ollama and Docker were left on your computer in case other programs use them.'
       : 'AUC is installed and running. You can open it in your web browser.',
     warnings: nemotronPending
-      ? ['AI summaries will use the Standard engine until Nemotron setup is finished.']
+      ? [
+        'NVIDIA refused the key — tick NGC Catalog and accept the model pages once. AUC will write summaries with the Standard engine for now.',
+      ]
       : [],
     app_url: isUninstall ? null : 'http://localhost:3000',
     nemotron_pending: nemotronPending,

@@ -13,9 +13,9 @@
 #
 # The first run downloads the images (from nvcr.io, which needs a one-time
 # `docker login nvcr.io`; this script offers to do it) and then the model
-# weights, which needs NGC_API_KEY or HF_TOKEN exported in this shell. Those
-# are credentials: export them here, never write them into a file in the
-# repository.
+# weights. docker-compose.yml asks NIM to fetch those from NGC, which needs
+# NGC_API_KEY exported in this shell. That is a credential: export it here,
+# never write it into a file in the repository.
 #
 # Waits up to AUC_NIM_WAIT_MINUTES (default 30) for the containers to be
 # ready. Exits 0 when both answer, 1 otherwise.
@@ -70,27 +70,45 @@ done
 
 compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
 
-if [ -z "${NGC_API_KEY:-}" ] && [ -z "${HF_TOKEN:-}" ]; then
-    echo "  · Neither NGC_API_KEY nor HF_TOKEN is set. Fine once the model weights"
-    echo "    are downloaded; on a first start the download may fail without one."
+EMBED_IMAGE="nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3"
+RERANK_IMAGE="nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3"
+images_cached() {
+    docker image inspect "$EMBED_IMAGE" >/dev/null 2>&1 \
+        && docker image inspect "$RERANK_IMAGE" >/dev/null 2>&1
+}
+
+if [ -z "${NGC_API_KEY:-}" ]; then
+    echo "  · NGC_API_KEY is not set. Fine once the model weights are downloaded;"
+    echo "    on a first start the download may fail without one."
 fi
 
 echo "  · Fetching the Nemotron images (several GB the first time)..."
 if ! compose pull; then
-    if [ ! -t 0 ]; then
-        echo "  ✗ Could not download the images. If this is a login problem, run:"
-        echo "      docker login nvcr.io"
-        exit 1
-    fi
-    echo ""
-    echo "  The images are on NVIDIA's registry, which needs a one-time login."
-    echo "  The username is literally \$oauthtoken and the password is your NGC"
-    echo "  API key (ngc.nvidia.com → your account → Setup → Generate API Key)."
-    echo ""
-    # shellcheck disable=SC2016  # $oauthtoken is the literal username, not a variable
-    if ! { docker login nvcr.io --username '$oauthtoken' && compose pull; }; then
-        echo "  ✗ Could not download the images."
-        exit 1
+    if images_cached; then
+        echo "  · Could not refresh the images; the copies already on this machine will be used."
+    else
+        if [ ! -t 0 ]; then
+            echo "  ✗ Could not download the images. If this is a login problem, run:"
+            echo "      docker login nvcr.io"
+            echo "    Use a Personal Key with NGC Catalog ticked, and open the two Nemotron"
+            echo "    container pages on catalog.ngc.nvidia.com once if NVIDIA asks you to"
+            echo "    accept the terms."
+            exit 1
+        fi
+        echo ""
+        echo "  The images are on NVIDIA's registry, which needs a one-time login."
+        echo "  The username is literally \$oauthtoken and the password is your NGC"
+        echo "  API key (ngc.nvidia.com → your account → Setup → Generate API Key,"
+        echo "  with NGC Catalog ticked)."
+        echo ""
+        # shellcheck disable=SC2016  # $oauthtoken is the literal username, not a variable
+        if ! { docker login nvcr.io --username '$oauthtoken' && compose pull; }; then
+            echo "  ✗ Could not download the images."
+            echo "    Generate a Personal Key with NGC Catalog ticked, and open the two"
+            echo "    Nemotron container pages on catalog.ngc.nvidia.com once if NVIDIA"
+            echo "    asks you to accept the terms."
+            exit 1
+        fi
     fi
 fi
 

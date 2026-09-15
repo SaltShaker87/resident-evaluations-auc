@@ -242,6 +242,7 @@ x-nim: &nim
   shm_size: 16gb
   user: "${NIM_UID:?start these with: bash auc/start-nemotron.sh}"
   environment:
+    - NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER=ngc
     - NGC_API_KEY
     - HF_TOKEN
   restart: unless-stopped

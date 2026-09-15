@@ -65,7 +65,9 @@ impl Platform for LinuxPlatform {
     }
 
     fn install_docker_stack(&self, ctx: &mut Ctx, system: &SystemInfo) -> Result<()> {
-        let in_group = detect::in_docker_group();
+        // The group file, not this session: usermod has already been done on a
+        // previous run, even if this login is older than that change.
+        let in_group = detect::in_docker_group() || detect::in_docker_group_file();
         let needs = nemotron::needs_from(system, in_group);
         if !needs.anything() {
             ctx.log("Docker, the compose plugin and the NVIDIA runtime are all already here.");
@@ -82,7 +84,8 @@ impl Platform for LinuxPlatform {
         if needs.add_group {
             ctx.log(
                 "You have been added to the docker group. That only takes effect at your next \
-                 login, so for today the installer runs Docker with the administrator password.",
+                 login, so for today the installer starts the containers with `sg docker` rather \
+                 than asking for the administrator password again.",
             );
         }
         Ok(())

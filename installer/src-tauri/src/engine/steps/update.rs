@@ -61,7 +61,7 @@ pub fn run(platform: &dyn Platform, ctx: &mut Ctx) -> Result<FlowResult> {
     );
     if existing.choices.nemotron_enabled && (compose_changed || existing.nemotron_pending) {
         ctx.log("The Nemotron containers are being restarted because their setup changed.");
-        nemotron::start_or_defer(platform, ctx, &new_app, None, true)?;
+        nemotron::start_or_defer(ctx, &new_app, None, true)?;
     } else {
         ctx.progress.start(StepId::Nemotron);
         ctx.progress.skipped(

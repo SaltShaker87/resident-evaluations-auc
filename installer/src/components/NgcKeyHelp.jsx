@@ -3,6 +3,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { openUrl } from '../backend.js';
 
 export const NGC_URL = 'https://ngc.nvidia.com';
+export const NGC_EMBED_URL =
+  'https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/nemotron-3-embed-1b';
+export const NGC_RERANK_URL =
+  'https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/llama-nemotron-rerank-vl-1b-v2';
 
 /**
  * The "Open NVIDIA account site" button, with step-by-step instructions
@@ -63,7 +67,25 @@ export default function NgcKeyHelp() {
           </li>
           <li>
             <strong>Click <em>Generate API Key</em></strong> (or <em>Generate Personal Key</em>).
-            If it asks which services the key is for, tick <em>NGC Catalog</em>. Confirm.
+            If it asks which services the key is for, tick <em>NGC Catalog</em>. A key without
+            that box ticked cannot download the models.
+          </li>
+          <li>
+            <strong>Open the two model pages once</strong> and accept the terms NVIDIA shows if
+            it asks. Without that, a valid key still gets “access denied.” Keep this installer
+            window open.
+            <ul>
+              <li>
+                <button type="button" className="link-btn" onClick={() => openUrl(NGC_EMBED_URL)}>
+                  nemotron-3-embed-1b
+                </button>
+              </li>
+              <li>
+                <button type="button" className="link-btn" onClick={() => openUrl(NGC_RERANK_URL)}>
+                  llama-nemotron-rerank-vl-1b-v2
+                </button>
+              </li>
+            </ul>
           </li>
           <li>
             <strong>Copy the key and keep it safe.</strong> It is a long line of letters and

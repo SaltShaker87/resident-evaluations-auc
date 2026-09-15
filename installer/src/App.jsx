@@ -6,7 +6,7 @@ import {
   runAction,
   subscribe,
 } from './backend.js';
-import { defaultChoices } from './utils.js';
+import { defaultChoices, trimmedNgcKey } from './utils.js';
 import Footer from './components/Footer.jsx';
 import Welcome from './screens/Welcome.jsx';
 import Checking from './screens/Checking.jsx';
@@ -25,7 +25,7 @@ function buildInstallOptions(choices) {
     nemotron_enabled: choices.ai_enabled && choices.nemotron_enabled,
     ngc_key:
       choices.ai_enabled && choices.nemotron_enabled && !choices.ngc_key_later
-        ? choices.ngc_key
+        ? trimmedNgcKey(choices.ngc_key)
         : null,
     network_scope: choices.network_scope,
     adopt_existing: choices.adopt_existing,
@@ -254,7 +254,9 @@ export default function App() {
             onRun={() =>
               startAction({
                 kind: 'finish_nemotron',
-                ngc_key: finishNemotronKey.ngc_key_later ? null : finishNemotronKey.ngc_key,
+                ngc_key: finishNemotronKey.ngc_key_later
+                  ? null
+                  : trimmedNgcKey(finishNemotronKey.ngc_key),
               })
             }
           />

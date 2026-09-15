@@ -274,6 +274,49 @@ pub fn in_docker_group() -> bool {
         .unwrap_or(false)
 }
 
+/// Members listed for a group in `getent` / `/etc/group` form:
+/// `docker:x:999:alice,bob`.
+pub fn parse_group_entry(text: &str, group: &str) -> Vec<String> {
+    let prefix = format!("{group}:");
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix(&prefix) else {
+            continue;
+        };
+        let Some((_, members)) = rest.rsplit_once(':') else {
+            continue;
+        };
+        return members
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+    }
+    Vec::new()
+}
+
+/// Whether this account is listed in the docker group on disk. That can be
+/// true while `in_docker_group` is still false, because a new login is what
+/// actually applies the membership to this session.
+pub fn in_docker_group_file() -> bool {
+    let Some(user) = capture("id", &["-un"]).map(|s| s.trim().to_string()) else {
+        return false;
+    };
+    if user.is_empty() {
+        return false;
+    }
+    let listing = capture("getent", &["group", "docker"])
+        .or_else(|| std::fs::read_to_string("/etc/group").ok());
+    listing
+        .map(|text| {
+            parse_group_entry(&text, "docker")
+                .iter()
+                .any(|m| m == &user)
+        })
+        .unwrap_or(false)
+}
+
 pub fn detect_tools() -> Tools {
     let ollama_present = have("ollama");
     let ollama = OllamaTool {
@@ -551,6 +594,14 @@ ID_LIKE="ubuntu debian"
         let groups = parse_groups("you adm sudo docker plugdev\n");
         assert!(groups.iter().any(|g| g == "docker"));
         assert!(!parse_groups("you adm sudo\n").iter().any(|g| g == "docker"));
+    }
+
+    #[test]
+    fn docker_group_members_are_read_from_the_group_file() {
+        let members = parse_group_entry("docker:x:999:alice,bob\n", "docker");
+        assert_eq!(members, vec!["alice", "bob"]);
+        assert!(parse_group_entry("sudo:x:27:you\n", "docker").is_empty());
+        assert!(parse_group_entry("docker:x:999:\n", "docker").is_empty());
     }
 
     #[test]

@@ -152,9 +152,11 @@ would send resident comments off this machine. A test (`test_config.py`)
 checks that the defaults point at this machine.
 
 The NGC API key that downloads the images is typed into `docker login`, which
-keeps it in `~/.docker/config.json`, outside the repository. `NGC_API_KEY` and
-`HF_TOKEN` are passed to the containers from the shell environment only and
-never written to a file.
+keeps it in `~/.docker/config.json`, outside the repository. `NGC_API_KEY` is
+passed to the containers from the shell environment only (and `HF_TOKEN` if
+it is set) and never written to a file. Compose sets
+`NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER=ngc` so that key is what fetches the
+weights.
 
 ---
 

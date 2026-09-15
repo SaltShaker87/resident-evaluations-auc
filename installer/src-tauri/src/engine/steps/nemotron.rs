@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 
 use crate::engine::layout::ensure_dir;
-use crate::engine::process::Cmd;
+use crate::engine::process::{have, Cmd};
 use crate::engine::types::{StepId, SystemInfo};
 use crate::engine::{detect, guard, net, Ctx, Privilege};
 use crate::platform::Platform;
@@ -26,8 +26,23 @@ use crate::platform::Platform;
 /// gigabytes, and on a slow connection that is genuinely half an hour.
 const READY_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
+/// How often to ask Docker whether a container has died while we wait.
+const CRASH_CHECK: Duration = Duration::from_secs(10);
+
 /// The two containers, and the folders their weights are cached in.
 const SERVICES: [&str; 2] = ["nemotron-embed", "nemotron-rerank"];
+
+/// Must match `auc/nim/docker-compose.yml`. Used to notice a failed pull that
+/// can still start from images already on the machine.
+const IMAGES: [&str; 2] = [
+    "nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3",
+    "nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3",
+];
+
+/// What to tell someone when NVIDIA's registry will not hand over the images.
+const NGC_REGISTRY_HINT: &str = "The images come from NVIDIA's registry. Generate a Personal Key \
+     with NGC Catalog ticked (ngc.nvidia.com, then Setup and Generate API Key), and open the two \
+     Nemotron container pages once to accept the terms if NVIDIA asks.";
 
 // ---------------------------------------------------------------------------
 // The `docker` step
@@ -53,7 +68,10 @@ pub fn needs_from(system: &SystemInfo, user_in_docker_group: bool) -> DockerNeed
     DockerNeeds {
         install_docker: !docker.present,
         install_compose: docker.present && !docker.compose,
-        install_toolkit: !docker.nvidia_runtime,
+        // If Docker is installed but this session cannot talk to it yet, we
+        // cannot honestly ask whether the NVIDIA runtime is there — and must
+        // not try to reinstall the toolkit on every Finish Nemotron.
+        install_toolkit: !docker.nvidia_runtime && (docker.usable_by_user || !docker.present),
         add_group: !user_in_docker_group,
     }
 }
@@ -102,8 +120,8 @@ pub fn docker_setup_script(needs: &DockerNeeds, user: &str) -> String {
     if needs.add_group {
         script.push_str(&format!(
             "# So that Docker can be used without a password from the next login\n\
-             # onwards. Group membership only applies to new sessions, which is why\n\
-             # this installer still asks for the password once more today.\n\
+             # onwards. Until then the installer starts the containers with `sg docker`\n\
+             # rather than asking for the administrator password a second time.\n\
              usermod -aG docker {}\n\n",
             shell_quote(user)
         ));
@@ -151,13 +169,58 @@ impl Default for Endpoints {
     }
 }
 
+/// Spaces and a stray newline from a paste must not become part of the key.
+pub fn trimmed_ngc_key(key: Option<&str>) -> Option<&str> {
+    key.map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// One line for the step row: the real reason, not the Standard-engine fallback.
+pub fn short_nemotron_detail(err: &anyhow::Error) -> String {
+    let text = format!("{err:#}").to_lowercase();
+    if looks_like_registry_denial(&text) {
+        "NVIDIA refused the key — tick NGC Catalog and accept the model pages once".to_string()
+    } else if text.contains("signing in") {
+        "Could not sign in to NVIDIA's registry with that key".to_string()
+    } else if text.contains("downloading the nemotron") || text.contains("could not download") {
+        "Could not download the Nemotron images".to_string()
+    } else if text.contains("starting the nemotron") {
+        "The Nemotron containers did not start".to_string()
+    } else if text.contains("stopped instead of starting") {
+        "A Nemotron container stopped instead of starting".to_string()
+    } else if text.contains("still not ready after") {
+        "The containers were not ready after 30 minutes".to_string()
+    } else {
+        let first = err.to_string();
+        let line = first.lines().next().unwrap_or(&first).trim();
+        let shortened: String = line.chars().take(120).collect();
+        if shortened.is_empty() {
+            "Not running yet — see Details".to_string()
+        } else if shortened.chars().count() < line.chars().count() {
+            format!("{shortened}…")
+        } else {
+            shortened
+        }
+    }
+}
+
+fn looks_like_registry_denial(text: &str) -> bool {
+    text.contains("unauthorized")
+        || text.contains("access denied")
+        || text.contains("authentication required")
+        || text.contains("denied:")
+        || text.contains("401")
+}
+
+fn with_registry_hint(err: anyhow::Error) -> anyhow::Error {
+    err.context(NGC_REGISTRY_HINT)
+}
+
 /// Start the containers; if anything goes wrong, say so, write AUC's settings
 /// back to the Standard engine and carry on.
 ///
 /// This is the one step whose failure is not the end of the install: the app
 /// works on Ollama, and "finish Nemotron later" exists precisely for this.
 pub fn start_or_defer(
-    platform: &dyn Platform,
     ctx: &mut Ctx,
     app: &Path,
     ngc_key: Option<&str>,
@@ -172,7 +235,8 @@ pub fn start_or_defer(
         return Ok(());
     }
 
-    match start(platform, ctx, app, ngc_key) {
+    let ngc_key = trimmed_ngc_key(ngc_key);
+    match start(ctx, app, ngc_key) {
         Ok(()) => {
             ctx.nemotron_pending = false;
             // If an earlier attempt pinned AUC to the Standard engine, that
@@ -186,18 +250,16 @@ pub fn start_or_defer(
         Err(err) => {
             ctx.nemotron_pending = true;
             ctx.log(format!("{err:#}"));
+            let detail = short_nemotron_detail(&err);
             // Until they answer, AUC must use the Standard engine or every
             // summary fails. This line is removed again by finish_nemotron.
             super::configure::set_engine_default(ctx, Some("ollama"))?;
-            ctx.warn(
-                "The NVIDIA Nemotron containers are not running yet, so AUC will write summaries \
-                 with the Standard engine for now. Everything else is installed. You can finish \
-                 Nemotron later from the installer, or with: bash app/current/start-nemotron.sh",
-            );
-            ctx.progress.warning(
-                StepId::Nemotron,
-                "Not running yet — AUC will use the Standard engine for now",
-            );
+            ctx.warn(format!(
+                "{detail}. AUC will write summaries with the Standard engine for now. Everything \
+                 else is installed. You can try Nemotron again from the installer, or with: bash \
+                 app/current/start-nemotron.sh"
+            ));
+            ctx.progress.warning(StepId::Nemotron, detail);
             Ok(())
         }
     }
@@ -214,25 +276,26 @@ pub fn docker_and_start(
     ngc_key: Option<&str>,
     enabled: bool,
 ) -> Result<()> {
+    let ngc_key = trimmed_ngc_key(ngc_key);
     if !enabled {
         setup_docker(platform, ctx, system, false)?;
-        return start_or_defer(platform, ctx, app, ngc_key, false);
+        return start_or_defer(ctx, app, ngc_key, false);
     }
 
     match setup_docker(platform, ctx, system, true) {
-        Ok(()) => start_or_defer(platform, ctx, app, ngc_key, true),
+        Ok(()) => start_or_defer(ctx, app, ngc_key, true),
         Err(err) if crate::engine::cancel::is_cancelled_error(&err) => Err(err),
         Err(err) => {
             ctx.nemotron_pending = true;
             ctx.log(format!("{err:#}"));
+            let detail = short_nemotron_detail(&err);
             super::configure::set_engine_default(ctx, Some("ollama"))?;
             ctx.warn(format!(
-                "Docker could not be prepared for the NVIDIA Nemotron containers, so AUC will \
-                 write summaries with the Standard engine for now. Everything else is installed. \
-                 The reason was: {err}"
+                "Docker could not be prepared for the NVIDIA Nemotron containers ({detail}), so \
+                 AUC will write summaries with the Standard engine for now. Everything else is \
+                 installed."
             ));
-            ctx.progress
-                .failed(StepId::Docker, "Could not be prepared — see the log");
+            ctx.progress.failed(StepId::Docker, detail);
             ctx.progress.start(StepId::Nemotron);
             ctx.progress
                 .skipped(StepId::Nemotron, "Docker is not ready on this machine");
@@ -242,12 +305,7 @@ pub fn docker_and_start(
 }
 
 /// The sequence itself, with no forgiveness: login, pull, up, wait.
-pub fn start(
-    platform: &dyn Platform,
-    ctx: &mut Ctx,
-    app: &Path,
-    ngc_key: Option<&str>,
-) -> Result<()> {
+pub fn start(ctx: &mut Ctx, app: &Path, ngc_key: Option<&str>) -> Result<()> {
     let compose_file = app.join("nim/docker-compose.yml");
     if !compose_file.is_file() {
         return Err(anyhow!(
@@ -269,19 +327,21 @@ pub fn start(
         ensure_dir(&cache_dir.join(service).join("weights"))?;
     }
 
-    let runner = ComposeRunner::for_this_machine(ctx, &compose_file, &cache_dir);
-    if runner.privileged {
-        ctx.log(
-            "This user is not in the docker group yet — group membership only applies to a new \
-             login — so Docker is run with the administrator password for today only.",
-        );
+    let runner = ComposeRunner::for_this_machine(&compose_file, &cache_dir);
+    match runner.access {
+        DockerAccess::Sg => ctx.log(
+            "This login session is not in the docker group yet — group membership only applies \
+             to a new login — so Docker is run with `sg docker` rather than the administrator \
+             password.",
+        ),
+        DockerAccess::Direct => {}
     }
 
     ctx.progress.detail(
         StepId::Nemotron,
         "Fetching the Nemotron images (several GB the first time)",
     );
-    runner.bring_up(platform, ctx, ngc_key)?;
+    runner.bring_up(ctx, ngc_key)?;
 
     ctx.progress.detail(
         StepId::Nemotron,
@@ -290,25 +350,31 @@ pub fn start(
     wait_until_ready(ctx, &endpoints, &runner)
 }
 
+/// How this process is allowed to talk to Docker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DockerAccess {
+    /// root, or this session already has the docker group.
+    Direct,
+    /// The account is in the group on disk, but this login is older than that
+    /// change, so `sg docker` opens a subprocess that can use the socket.
+    Sg,
+}
+
 /// How `docker compose` is run on this machine.
 struct ComposeRunner {
     compose_file: PathBuf,
     cache_dir: PathBuf,
     uid: u32,
-    privileged: bool,
-    privilege: Privilege,
+    access: DockerAccess,
 }
 
 impl ComposeRunner {
-    fn for_this_machine(ctx: &Ctx, compose_file: &Path, cache_dir: &Path) -> ComposeRunner {
-        let uid = current_uid();
+    fn for_this_machine(compose_file: &Path, cache_dir: &Path) -> ComposeRunner {
         ComposeRunner {
             compose_file: compose_file.to_path_buf(),
             cache_dir: cache_dir.to_path_buf(),
-            uid,
-            // root can always use Docker; so can a member of the docker group.
-            privileged: uid != 0 && !detect::in_docker_group(),
-            privilege: ctx.privilege,
+            uid: current_uid(),
+            access: docker_access(),
         }
     }
 
@@ -325,68 +391,49 @@ impl ComposeRunner {
         ]
     }
 
+    fn docker(&self, args: &[String]) -> Cmd {
+        match self.access {
+            DockerAccess::Direct => Cmd::new("docker")
+                .args(args.iter().cloned())
+                .envs(self.env()),
+            DockerAccess::Sg => Cmd::new("sg")
+                .args(["docker", "-c", &sg_docker_command(args)])
+                .envs(self.env()),
+        }
+    }
+
     fn compose(&self, args: &[&str]) -> Cmd {
         let file = self.compose_file.display().to_string();
-        if self.privileged {
-            let mut cmd = Cmd::new(privileged_program(self.privilege)).arg("/usr/bin/env");
-            for (key, value) in self.env() {
-                cmd = cmd.arg(format!("{key}={value}"));
-            }
-            cmd.args(["docker", "compose", "-f"])
-                .arg(file)
-                .args(args.iter().copied())
-        } else {
-            Cmd::new("docker")
-                .args(["compose", "-f"])
-                .arg(file)
-                .args(args.iter().copied())
-                .envs(self.env())
-        }
+        let mut docker_args = vec!["compose".to_string(), "-f".to_string(), file];
+        docker_args.extend(args.iter().map(|s| (*s).to_string()));
+        self.docker(&docker_args)
     }
 
     /// Log in if we have a key, then pull and start.
     ///
-    /// When Docker needs the administrator password, all three are batched
-    /// into one script so the password is asked for once — and the key is read
-    /// from that script's standard input, so it is still never written down.
-    fn bring_up(
-        &self,
-        platform: &dyn Platform,
-        ctx: &mut Ctx,
-        ngc_key: Option<&str>,
-    ) -> Result<()> {
-        if self.privileged {
-            let script = compose_up_script(
-                &self.compose_file,
-                self.uid,
-                &self.cache_dir,
-                ngc_key.is_some(),
-            );
-            return platform.privileged_run(
-                ctx,
-                "Starting the NVIDIA Nemotron containers",
-                &script,
-                ngc_key,
-            );
-        }
+    /// Docker itself is never run through `pkexec` here: a graphical password
+    /// prompt swallows stdin, which is how the NGC key would otherwise arrive.
+    fn bring_up(&self, ctx: &mut Ctx, ngc_key: Option<&str>) -> Result<()> {
+        let ngc_key = trimmed_ngc_key(ngc_key);
 
         if let Some(key) = ngc_key {
             ctx.log("Signing in to NVIDIA's registry (nvcr.io).");
-            Cmd::new("docker")
-                .args([
-                    "login",
-                    "nvcr.io",
-                    "--username",
-                    "$oauthtoken",
-                    "--password-stdin",
-                ])
-                .stdin_secret(key)
-                .timeout(Duration::from_secs(120))
-                .run_ok(
-                    ctx.emitter.as_ref(),
-                    &ctx.cancel,
-                    "Signing in to NVIDIA's registry with the NGC API key",
-                )?;
+            self.docker(&[
+                "login".to_string(),
+                "nvcr.io".to_string(),
+                "--username".to_string(),
+                "$oauthtoken".to_string(),
+                "--password-stdin".to_string(),
+            ])
+            .stdin_secret(key)
+            .redact(key)
+            .timeout(Duration::from_secs(120))
+            .run_ok(
+                ctx.emitter.as_ref(),
+                &ctx.cancel,
+                "Signing in to NVIDIA's registry with the NGC API key",
+            )
+            .map_err(with_registry_hint)?;
         }
 
         let mut pull = self
@@ -397,17 +444,20 @@ impl ComposeRunner {
             // weights can use it. Never in the arguments.
             pull = pull.env("NGC_API_KEY", key).redact(key);
         }
-        pull.run_ok(
+        if let Err(err) = pull.run_ok(
             ctx.emitter.as_ref(),
             &ctx.cancel,
             "Downloading the Nemotron container images",
-        )
-        .map_err(|err| {
-            anyhow!(
-                "{err}\nThe images come from NVIDIA's registry, which needs an NGC API key the \
-                 first time (ngc.nvidia.com, then Setup and Generate API Key)."
-            )
-        })?;
+        ) {
+            if self.images_cached(ctx) {
+                ctx.log(format!(
+                    "Could not refresh the images from NVIDIA's registry; the copies already on \
+                     this machine will be used. {err}"
+                ));
+            } else {
+                return Err(with_registry_hint(err));
+            }
+        }
 
         let mut up = self
             .compose(&["up", "-d"])
@@ -421,6 +471,20 @@ impl ComposeRunner {
             "Starting the Nemotron containers",
         )?;
         Ok(())
+    }
+
+    fn images_cached(&self, ctx: &Ctx) -> bool {
+        IMAGES.iter().all(|image| {
+            self.docker(&[
+                "image".to_string(),
+                "inspect".to_string(),
+                (*image).to_string(),
+            ])
+            .quiet()
+            .run(ctx.emitter.as_ref(), &ctx.cancel)
+            .map(|out| out.success)
+            .unwrap_or(false)
+        })
     }
 
     /// Which containers have stopped or are restarting in a loop, or `None`
@@ -451,43 +515,21 @@ impl ComposeRunner {
     }
 }
 
-/// The whole privileged phase as one script. The key is read from standard
-/// input so that it appears neither in the process list nor in this file.
-pub fn compose_up_script(
-    compose_file: &Path,
-    uid: u32,
-    cache_dir: &Path,
-    with_key: bool,
-) -> String {
-    let file = shell_quote(&compose_file.display().to_string());
-    let cache = shell_quote(&cache_dir.display().to_string());
-    let mut script = format!(
-        "#!/bin/bash\n\
-         # AUC installer — starting the NVIDIA Nemotron containers.\n\
-         set -euo pipefail\n\
-         # NIM_UID and NIM_CACHE_DIR are what the compose file insists on, so that\n\
-         # a bare `docker compose up` stops rather than half-working.\n\
-         export NIM_UID={uid}\n\
-         export NIM_CACHE_DIR={cache}\n\n"
-    );
-
-    if with_key {
-        script.push_str(
-            "# The NGC API key arrives on standard input. It is a credential: it must\n\
-             # not appear in the process list, in this script, or in the log.\n\
-             IFS= read -r NGC_API_KEY || true\n\
-             export NGC_API_KEY\n\
-             if [ -n \"${NGC_API_KEY:-}\" ]; then\n\
-             \x20   printf '%s' \"$NGC_API_KEY\" | docker login nvcr.io --username '$oauthtoken' --password-stdin\n\
-             fi\n\n",
-        );
+fn docker_access() -> DockerAccess {
+    if current_uid() == 0 || detect::in_docker_group() {
+        DockerAccess::Direct
+    } else if have("sg") {
+        DockerAccess::Sg
+    } else {
+        DockerAccess::Direct
     }
+}
 
-    script.push_str(&format!(
-        "docker compose -f {file} pull\n\
-         docker compose -f {file} up -d\n"
-    ));
-    script
+/// `sg docker -c` body: `exec` so Docker, not a leftover shell, is the process.
+pub fn sg_docker_command(args: &[String]) -> String {
+    let mut parts = vec!["docker".to_string()];
+    parts.extend(args.iter().map(|a| shell_quote(a)));
+    format!("exec {}", parts.join(" "))
 }
 
 /// Poll both containers until they answer, and stop early if one has died.
@@ -495,10 +537,6 @@ fn wait_until_ready(ctx: &mut Ctx, endpoints: &Endpoints, runner: &ComposeRunner
     let start = Instant::now();
     let mut last_report = start;
     let mut last_container_check = start;
-    // Asking Docker anything costs a password prompt when the user is not in
-    // the docker group, so in that case the check is left until the wait has
-    // run out rather than done every minute.
-    let check_containers_while_waiting = !runner.privileged;
 
     loop {
         ctx.cancel.check()?;
@@ -511,9 +549,7 @@ fn wait_until_ready(ctx: &mut Ctx, endpoints: &Endpoints, runner: &ComposeRunner
         }
 
         let now = Instant::now();
-        if check_containers_while_waiting
-            && now.duration_since(last_container_check) >= Duration::from_secs(60)
-        {
+        if now.duration_since(last_container_check) >= CRASH_CHECK {
             last_container_check = now;
             if let Some(ids) = runner.stopped_containers(ctx) {
                 return Err(container_died(ctx, runner, &ids));
@@ -670,6 +706,22 @@ mod tests {
     }
 
     #[test]
+    fn docker_present_but_this_session_cannot_use_it_does_not_reinstall_the_toolkit() {
+        let needs = needs_from(
+            &system(DockerTool {
+                present: true,
+                usable_by_user: false,
+                nvidia_runtime: false,
+                compose: true,
+            }),
+            true,
+        );
+        assert!(!needs.install_toolkit);
+        assert!(!needs.install_docker);
+        assert!(!needs.add_group);
+    }
+
+    #[test]
     fn the_privileged_script_asks_for_only_what_is_missing() {
         let everything = docker_setup_script(
             &DockerNeeds {
@@ -689,6 +741,7 @@ mod tests {
         assert!(everything.contains("nvidia-ctk runtime configure --runtime=docker"));
         assert!(everything.contains("systemctl restart docker"));
         assert!(everything.contains("usermod -aG docker 'you'"));
+        assert!(everything.contains("sg docker"));
         assert!(everything.starts_with("#!/bin/bash"));
         assert!(everything.contains("set -euo pipefail"));
 
@@ -717,36 +770,50 @@ mod tests {
     }
 
     #[test]
-    fn the_privileged_start_script_reads_the_key_from_stdin_and_never_writes_it_down() {
-        let script = compose_up_script(
-            Path::new("/home/you/.local/share/auc/app/current/nim/docker-compose.yml"),
-            1000,
-            Path::new("/home/you/.cache/nim"),
-            true,
+    fn sg_docker_quotes_the_compose_file_and_the_literal_oauth_username() {
+        let pull = sg_docker_command(&[
+            "compose".to_string(),
+            "-f".to_string(),
+            "/home/you/.local/share/auc/app/current/nim/docker-compose.yml".to_string(),
+            "pull".to_string(),
+        ]);
+        assert_eq!(
+            pull,
+            "exec docker 'compose' '-f' '/home/you/.local/share/auc/app/current/nim/docker-compose.yml' 'pull'"
         );
-        assert!(script.contains("IFS= read -r NGC_API_KEY"));
-        assert!(script.contains("--password-stdin"));
-        assert!(script.contains("--username '$oauthtoken'"));
-        assert!(script.contains("export NIM_UID=1000"));
-        assert!(script.contains("export NIM_CACHE_DIR='/home/you/.cache/nim'"));
-        assert!(script.contains("docker compose -f '/home/you/.local/share/auc/app/current/nim/docker-compose.yml' up -d"));
-        // Belt and braces: no key material could be in a rendered script,
-        // because the script never receives one.
-        assert!(!script.contains("nvapi-"));
+
+        let login = sg_docker_command(&[
+            "login".to_string(),
+            "nvcr.io".to_string(),
+            "--username".to_string(),
+            "$oauthtoken".to_string(),
+            "--password-stdin".to_string(),
+        ]);
+        assert!(
+            login.contains("'$oauthtoken'"),
+            "the dollar must not be expanded by the sg shell: {login}"
+        );
+        assert!(!login.contains("nvapi-"));
     }
 
     #[test]
-    fn without_a_key_the_start_script_does_not_try_to_log_in() {
-        let script = compose_up_script(
-            Path::new("/tmp/nim/docker-compose.yml"),
-            1000,
-            Path::new("/tmp/nim-cache"),
-            false,
-        );
-        assert!(!script.contains("docker login"));
-        assert!(!script.contains("read -r NGC_API_KEY"));
-        assert!(script.contains("pull"));
-        assert!(script.contains("up -d"));
+    fn a_pasted_key_drops_surrounding_space_and_a_blank_paste_is_no_key() {
+        assert_eq!(trimmed_ngc_key(Some("  nvapi-abc\n")), Some("nvapi-abc"));
+        assert_eq!(trimmed_ngc_key(Some("   \n")), None);
+        assert_eq!(trimmed_ngc_key(None), None);
+    }
+
+    #[test]
+    fn nvidia_refusing_the_key_is_said_in_plain_language_on_the_step() {
+        let err = anyhow!("unauthorized: authentication required")
+            .context("Downloading the Nemotron container images did not work.");
+        assert!(short_nemotron_detail(&err).contains("NGC Catalog"));
+
+        let login = anyhow!("Signing in to NVIDIA's registry with the NGC API key did not work.");
+        assert!(short_nemotron_detail(&login).contains("sign in"));
+
+        let generic = anyhow!("This copy of AUC has no nim/docker-compose.yml");
+        assert!(short_nemotron_detail(&generic).contains("docker-compose.yml"));
     }
 
     #[test]

@@ -323,10 +323,10 @@ Notes on behaviour the engine settled on:
   engine that is not running.
 - When GPU memory is unknown, `best_message` ends "...this machine has no
   graphics card memory to report." instead of naming a number.
-- While the user is not yet in the `docker` group, every Docker command needs
-  the administrator password, so the "did a container die" check runs only
-  when the 30-minute wait runs out rather than every minute; readiness polling
-  is plain HTTP and needs no password.
+- While the user is not yet in the `docker` group of this login session,
+  Docker is run with `sg docker` rather than `pkexec`, so the NGC key is never
+  piped through a graphical password prompt. The "did a container die" check
+  runs every 10 seconds. Readiness polling is plain HTTP.
 
 **install** (and **repair**, which re-runs the same steps idempotently):
 
@@ -339,7 +339,7 @@ Notes on behaviour the engine settled on:
 | `ollama` | Installing Ollama | skipped when `ai_enabled` is false or Ollama is present |
 | `models` | Downloading AI models | chosen model + `qwen3-embedding:0.6b`, with byte progress from Ollama's pull API |
 | `docker` | Setting up Docker for NVIDIA Nemotron | skipped unless `nemotron_enabled`; Docker, compose, NVIDIA Container Toolkit, docker group |
-| `nemotron` | Starting NVIDIA Nemotron | login, pull, up, wait for `/v1/health/ready`; on failure becomes `warning` and sets `nemotron_pending` |
+| `nemotron` | Starting NVIDIA Nemotron | login, pull (or use cached images), up, wait for `/v1/health/ready`; on failure becomes `warning` with the real reason and sets `nemotron_pending` |
 | `index` | Building the ACGME reference index | `rag/build_index.py` (all engines it can reach) |
 | `autostart` | Setting up auto-start | units, `daemon-reload`, `enable`, linger, AUC icon, menu entry, Desktop shortcut |
 | `start` | Starting AUC | `systemctl --user restart auc`, wait for `/api/auth/status` |
@@ -393,9 +393,11 @@ graphical prompt) in the GUI and `sudo` in headless mode:
 - Installing Docker Engine, the compose plugin and the NVIDIA Container
   Toolkit from the distro's or the vendor's apt repository
 - `usermod -aG docker <user>`
-- `docker` / `docker compose` for this session only, when the user is not yet
-  in the `docker` group (group membership needs a fresh login)
 - `loginctl enable-linger <user>` when the unprivileged call fails
+
+`docker` / `docker compose` are not run as root. If this login session is not
+yet in the `docker` group, they are run with `sg docker` so the NGC key can
+stay on stdin and in the process environment.
 
 Steps are batched so one phase asks for the password once: the engine writes
 the phase's commands to a temporary script, logs the script's contents, runs
