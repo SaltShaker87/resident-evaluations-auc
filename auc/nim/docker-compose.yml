@@ -45,9 +45,17 @@ x-nim: &nim
   restart: unless-stopped
 
 services:
+  # The two version numbers differ on purpose. NVIDIA's documentation says
+  # ":2.3" for both, but nvcr.io has no 2.3 tag for nemotron-3-embed-1b
+  # ("manifest unknown", checked on a DGX Spark, September 2026); 2.2.2 is the
+  # newest tag it does have, and it ships an ARM build for the GB10. Pinned
+  # rather than "latest" so the model under the ACGME index cannot change
+  # without a rebuild. If you change either, change the installer too:
+  # installer/src-tauri/src/engine/steps/nemotron.rs (IMAGES) and
+  # auc/start-nemotron.sh.
   nemotron-embed:
     <<: *nim
-    image: nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3
+    image: nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2
     container_name: nemotron-embed
     volumes:
       - "${NIM_CACHE_DIR:?start these with: bash auc/start-nemotron.sh}/nemotron-embed/cache:/opt/cache"

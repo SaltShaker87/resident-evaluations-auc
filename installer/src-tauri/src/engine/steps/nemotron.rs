@@ -33,9 +33,10 @@ const CRASH_CHECK: Duration = Duration::from_secs(10);
 const SERVICES: [&str; 2] = ["nemotron-embed", "nemotron-rerank"];
 
 /// Must match `auc/nim/docker-compose.yml`. Used to notice a failed pull that
-/// can still start from images already on the machine.
+/// can still start from images already on the machine. The embedder is 2.2.2
+/// because nvcr.io has no 2.3 tag for it; the compose file says why.
 const IMAGES: [&str; 2] = [
-    "nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3",
+    "nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2",
     "nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3",
 ];
 

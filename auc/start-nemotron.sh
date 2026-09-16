@@ -70,7 +70,8 @@ done
 
 compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
 
-EMBED_IMAGE="nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3"
+# Must match nim/docker-compose.yml, which explains the two version numbers.
+EMBED_IMAGE="nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2"
 RERANK_IMAGE="nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3"
 images_cached() {
     docker image inspect "$EMBED_IMAGE" >/dev/null 2>&1 \

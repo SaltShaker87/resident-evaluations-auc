@@ -250,7 +250,7 @@ x-nim: &nim
 services:
   nemotron-embed:
     <<: *nim
-    image: nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3
+    image: nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2
     container_name: nemotron-embed
     volumes:
       - "${NIM_CACHE_DIR}/nemotron-embed/cache:/opt/cache"
