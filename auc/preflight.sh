@@ -70,20 +70,44 @@ else
     pass "Disk space: ${AVAIL_GB} GB free"
 fi
 
+# A Python that is installed but will not even start (the usual cause is a
+# PYTHONHOME or PYTHONPATH in the environment pointing somewhere wrong) is a
+# different problem from an old one, and is said as such.
+#
+# The line worth showing from a startup crash is the one naming the error
+# ("ModuleNotFoundError: No module named 'encodings'"), not the thread dump
+# that follows it.
+python_reason() {
+    local said
+    said=$(echo "$1" | grep -iE 'error' | grep -v 'no Python frame' | tail -1)
+    [ -z "$said" ] && said=$(echo "$1" | grep -v '^\s*$' | grep -v 'no Python frame' | tail -1)
+    echo "$said"
+}
+
 if command -v python3 &> /dev/null; then
-    PY_MINOR=$(python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0)
-    PY_VER=$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)
-    if [ "$PY_MINOR" -lt 10 ]; then
-        fail "Python $PY_VER — too old" "3.10 is the floor; below it the ACGME index layer cannot install."
-    elif [ "$PY_MINOR" -eq 10 ]; then
-        warn "Python $PY_VER — works, but 3.11+ is the comfortable floor" ""
+    if PY_ERR=$(python3 -c 'pass' 2>&1); then
+        PY_MINOR=$(python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0)
+        PY_VER=$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)
+        if [ "$PY_MINOR" -lt 10 ]; then
+            fail "Python $PY_VER — too old" "3.10 is the floor; below it the ACGME index layer cannot install."
+        elif [ "$PY_MINOR" -eq 10 ]; then
+            warn "Python $PY_VER — works, but 3.11+ is the comfortable floor" ""
+        else
+            pass "Python $PY_VER"
+        fi
     else
-        pass "Python $PY_VER"
+        fail "python3 is installed but would not start" \
+             "$(python_reason "$PY_ERR"). Check PYTHONHOME and PYTHONPATH in this environment."
     fi
 else
     fail "Python 3 not found" "Install Python 3.11 or newer."
 fi
 
+# Node.js only matters for rebuilding the interface. An installed copy of AUC
+# ships it built, so there it is a note rather than a warning; a Node that
+# lives only in a terminal's own path (nvm) is invisible here and that is fine.
+HAS_DIST=0
+[ -f "$SCRIPT_DIR/frontend/dist/index.html" ] && HAS_DIST=1
 if command -v node &> /dev/null; then
     NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
     if [ "$NODE_MAJOR" -lt 18 ]; then
@@ -91,6 +115,8 @@ if command -v node &> /dev/null; then
     else
         pass "Node.js $(node --version)"
     fi
+elif [ "$HAS_DIST" -eq 1 ]; then
+    info "Node.js not on this path; not needed, the interface is already built"
 else
     warn "Node.js not found" "Only needed to rebuild the interface, not to run it."
 fi
@@ -101,6 +127,12 @@ section "Application"
 
 if [ ! -x "$VENV_PY" ]; then
     fail "Python environment missing at backend/venv" "Run: bash $SCRIPT_DIR/setup.sh"
+elif ! VENV_ERR=$("$VENV_PY" -c 'pass' 2>&1); then
+    # One failure, not twelve: every check below would fail for the same
+    # reason and hide it. Treat the environment as absent from here on.
+    fail "The Python environment at backend/venv would not start" \
+         "$(python_reason "$VENV_ERR"). Check PYTHONHOME and PYTHONPATH in this environment, or rebuild it: bash $SCRIPT_DIR/setup.sh"
+    VENV_PY="$BACKEND/venv/bin/python.would-not-start"
 else
     pass "Python environment present ($("$VENV_PY" -c 'import platform; print(platform.python_version())'))"
 
@@ -282,7 +314,12 @@ fi
 # needed either way. Only the embedding model belongs to one engine.
 
 if MODELS=$(curl -sf --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null); then
-    NAMES=$(echo "$MODELS" | "$VENV_PY" -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" 2>/dev/null)
+    if [ -x "$VENV_PY" ]; then
+        NAMES=$(echo "$MODELS" | "$VENV_PY" -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" 2>/dev/null)
+    else
+        # No Python to parse with; the names are still readable by eye.
+        NAMES=$(echo "$MODELS" | grep -o '"name":"[^"]*"' | sed 's/"name":"//; s/"$//')
+    fi
     COUNT=$(echo "$NAMES" | grep -c . || true)
     if [ "${COUNT:-0}" -eq 0 ]; then
         fail "Ollama is running but has no models" "Pull one: ollama pull qwen3.5:4b"
