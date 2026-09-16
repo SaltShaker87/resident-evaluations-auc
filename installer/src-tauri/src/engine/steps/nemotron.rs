@@ -178,7 +178,17 @@ pub fn trimmed_ngc_key(key: Option<&str>) -> Option<&str> {
 /// One line for the step row: the real reason, not the Standard-engine fallback.
 pub fn short_nemotron_detail(err: &anyhow::Error) -> String {
     let text = format!("{err:#}").to_lowercase();
-    if looks_like_registry_denial(&text) {
+    if text.contains("manifest unknown")
+        || text.contains("manifest for") && text.contains("not found")
+    {
+        "NVIDIA's registry has no image with that version number — this copy of AUC needs updating"
+            .to_string()
+    } else if text.contains("no matching manifest") {
+        "NVIDIA has no build of that image for this processor".to_string()
+    } else if text.contains("docker daemon socket") || text.contains("docker.sock") {
+        "This login cannot use Docker yet — log out and back in, then try Nemotron again"
+            .to_string()
+    } else if looks_like_registry_denial(&text) {
         "NVIDIA refused the key — tick NGC Catalog and accept the model pages once".to_string()
     } else if text.contains("signing in") {
         "Could not sign in to NVIDIA's registry with that key".to_string()
@@ -210,6 +220,35 @@ fn looks_like_registry_denial(text: &str) -> bool {
         || text.contains("authentication required")
         || text.contains("denied:")
         || text.contains("401")
+}
+
+/// Docker's own last word on what went wrong, for the summary — the line a
+/// person would paste when asking for help. `None` when the error has no such
+/// line, for example when the compose file itself was missing.
+pub fn docker_said(err: &anyhow::Error) -> Option<String> {
+    let text = format!("{err:#}");
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    lines
+        .iter()
+        .rev()
+        .find(|l| {
+            let lower = l.to_lowercase();
+            lower.starts_with("error response from daemon")
+                || lower.starts_with("error:")
+                || lower.starts_with("error ")
+                || lower.contains(" error ")
+        })
+        .or_else(|| {
+            // The tail of a failed command follows "It said:"; its last line
+            // is the closest thing to a reason.
+            let after = lines.iter().rposition(|l| l.ends_with("It said:"))?;
+            lines.get(after + 1..).and_then(|rest| rest.last())
+        })
+        .map(|l| l.chars().take(240).collect())
 }
 
 fn with_registry_hint(err: anyhow::Error) -> anyhow::Error {
@@ -252,13 +291,17 @@ pub fn start_or_defer(
             ctx.nemotron_pending = true;
             ctx.log(format!("{err:#}"));
             let detail = short_nemotron_detail(&err);
+            let said = docker_said(&err)
+                .map(|line| format!(" Docker said: {line}"))
+                .unwrap_or_default();
             // Until they answer, AUC must use the Standard engine or every
             // summary fails. This line is removed again by finish_nemotron.
             super::configure::set_engine_default(ctx, Some("ollama"))?;
             ctx.warn(format!(
-                "{detail}. AUC will write summaries with the Standard engine for now. Everything \
-                 else is installed. You can try Nemotron again from the installer, or with: bash \
-                 app/current/start-nemotron.sh"
+                "{detail}.{said} AUC will write summaries with the Standard engine for now. \
+                 Everything else is installed. You can try Nemotron again from the installer, or \
+                 with: bash app/current/start-nemotron.sh. The full text is in {}.",
+                ctx.layout.logs_dir().display()
             ));
             ctx.progress.warning(StepId::Nemotron, detail);
             Ok(())
@@ -815,6 +858,40 @@ mod tests {
 
         let generic = anyhow!("This copy of AUC has no nim/docker-compose.yml");
         assert!(short_nemotron_detail(&generic).contains("docker-compose.yml"));
+    }
+
+    #[test]
+    fn a_version_nvidia_never_published_is_named_as_such() {
+        // Word for word what a DGX Spark logged for nemotron-3-embed-1b:2.3.
+        let err = anyhow!(
+            " 1594490fe61a Waiting 0B\n\
+             Image nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3 Error manifest for \
+             nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3 not found: manifest unknown: manifest unknown\n\
+             Error response from daemon: manifest for nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.3 \
+             not found: manifest unknown: manifest unknown"
+        )
+        .context("Downloading the Nemotron container images did not work. It said:")
+        .context(NGC_REGISTRY_HINT);
+        let detail = short_nemotron_detail(&err);
+        assert!(detail.contains("no image with that version"), "{detail}");
+        let said = docker_said(&err).expect("docker had a last word");
+        assert!(said.starts_with("Error response from daemon"), "{said}");
+        assert!(said.contains("manifest unknown"), "{said}");
+
+        let arch = anyhow!("no matching manifest for linux/arm64/v8 in the manifest list entries");
+        assert!(short_nemotron_detail(&arch).contains("this processor"));
+
+        let socket = anyhow!(
+            "permission denied while trying to connect to the Docker daemon socket at \
+             unix:///var/run/docker.sock"
+        );
+        assert!(short_nemotron_detail(&socket).contains("log out and back in"));
+    }
+
+    #[test]
+    fn an_error_with_nothing_from_docker_in_it_has_no_docker_line() {
+        let err = anyhow!("This copy of AUC has no nim/docker-compose.yml, so the Nemotron containers cannot be started.");
+        assert_eq!(docker_said(&err), None);
     }
 
     #[test]
