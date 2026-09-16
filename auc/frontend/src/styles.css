@@ -672,7 +672,8 @@ body {
 
 .detail-header__profile {
   display: flex;
-  gap: 2rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
   margin-top: 0.75rem;
 }
 

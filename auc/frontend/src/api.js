@@ -84,6 +84,18 @@ export const uploadPhoto = async (residentId, file) => {
 export const getPhotoUrl = (filename) =>
   filename ? `${BASE}/photos/${filename}` : null;
 
+// Advisors — who presents whom at CCC. Organizational only; never sent to AI summaries.
+export const getAdvisors = () => request('/advisors');
+
+export const createAdvisor = (name) =>
+  request('/advisors', { method: 'POST', body: JSON.stringify({ name }) });
+
+export const updateAdvisor = (id, data) =>
+  request(`/advisors/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const deleteAdvisor = (id) =>
+  request(`/advisors/${id}`, { method: 'DELETE' });
+
 // ACGME Domains
 export const getDomains = () => request('/domains');
 
