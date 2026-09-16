@@ -99,14 +99,15 @@ impl Platform for LinuxPlatform {
     fn open_browser(&self, url: &str) -> Result<()> {
         // xdg-open, so it is whichever browser the user actually uses. Not
         // waited on: the browser outlives the installer.
-        std::process::Command::new("xdg-open")
+        let mut command = std::process::Command::new("xdg-open");
+        command
             .arg(url)
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .with_context(|| {
-                format!("Could not open a browser. AUC is at {url} — open it by hand.")
-            })?;
+            .stderr(std::process::Stdio::null());
+        crate::engine::process::scrub_env(&mut command);
+        command.spawn().with_context(|| {
+            format!("Could not open a browser. AUC is at {url} — open it by hand.")
+        })?;
         Ok(())
     }
 

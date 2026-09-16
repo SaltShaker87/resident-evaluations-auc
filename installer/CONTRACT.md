@@ -27,6 +27,13 @@ Hard rules the engine enforces, whatever the screens ask for:
    It is never written to `auc.env`, the state file or the log.
 4. **Every command's output goes to the log** (`auc://log` events and the
    log file), so "Copy details" always has the real error.
+5. **Children get this machine's environment, not the installer's.** An
+   AppImage's launcher exports `PYTHONHOME`, `PYTHONPATH`, `LD_LIBRARY_PATH`
+   and GTK settings that point into its own temporary mount; every program
+   the engine runs has those removed and `$APPDIR` entries taken out of
+   `PATH` and `XDG_DATA_DIRS` (`process::scrub_env`). Otherwise `python3`
+   and `backend/venv/bin/python` die on startup and the health check reports
+   problems the machine does not have.
 
 ---
 

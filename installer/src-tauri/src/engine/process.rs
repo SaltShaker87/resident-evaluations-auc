@@ -16,6 +16,90 @@ use anyhow::{anyhow, Context, Result};
 use crate::engine::cancel::{Cancel, Cancelled};
 use crate::engine::emitter::Emitter;
 
+// ---------------------------------------------------------------------------
+// The environment children are given
+// ---------------------------------------------------------------------------
+
+/// Variables an AppImage's launcher (linuxdeploy's AppRun) exports whether or
+/// not the bundled program has any use for them. They point into the
+/// AppImage's temporary mount, which holds no Python, no Perl and only the
+/// installer's own libraries — so a child `python3` dies on startup with
+/// "No module named 'encodings'", and other programs can pick up the wrong
+/// shared libraries. None of them is anything the installer wants a child to
+/// inherit on any machine, AppImage or not.
+pub const LEAKED_VARS: [&str; 19] = [
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PERLLIB",
+    "PERL5LIB",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "GSETTINGS_SCHEMA_DIR",
+    "QT_PLUGIN_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GIO_MODULE_DIR",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GTK_IM_MODULE_FILE",
+    "GTK_DATA_PREFIX",
+    "GTK_EXE_PREFIX",
+    "GTK_PATH",
+    "GTK_THEME",
+    "GDK_BACKEND",
+];
+
+/// Path-like variables the launcher prepends its mount to. Those entries are
+/// dropped; the rest of the value is kept.
+const PREFIXED_VARS: [&str; 2] = ["PATH", "XDG_DATA_DIRS"];
+
+/// Give a child the environment this machine has, not the AppImage's.
+pub fn scrub_env(command: &mut Command) {
+    for var in LEAKED_VARS {
+        command.env_remove(var);
+    }
+    if let Some(appdir) = appimage_dir() {
+        for var in PREFIXED_VARS {
+            if let Some(value) = std::env::var_os(var) {
+                let cleaned = without_prefix(&value.to_string_lossy(), &appdir);
+                command.env(var, cleaned);
+            }
+        }
+    }
+}
+
+/// The AppImage's mount point, when this process is running from one.
+fn appimage_dir() -> Option<String> {
+    std::env::var("APPDIR")
+        .ok()
+        .map(|d| d.trim_end_matches('/').to_string())
+        .filter(|d| !d.is_empty())
+}
+
+/// A colon-separated list with every entry under `prefix` removed.
+pub fn without_prefix(value: &str, prefix: &str) -> String {
+    value
+        .split(':')
+        .filter(|entry| !entry.is_empty())
+        .filter(|entry| entry != &prefix && !entry.starts_with(&format!("{prefix}/")))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// Which of the leaked variables are set right now — for one line in the log,
+/// so that a report from an AppImage shows what was taken away from children.
+pub fn leaked_vars_present() -> Vec<String> {
+    let mut found: Vec<String> = LEAKED_VARS
+        .iter()
+        .filter(|var| std::env::var_os(var).is_some())
+        .map(|var| (*var).to_string())
+        .collect();
+    if appimage_dir().is_some() {
+        found.push("APPDIR entries in PATH and XDG_DATA_DIRS".to_string());
+    }
+    found
+}
+
 /// What a finished command left behind.
 #[derive(Debug, Clone, Default)]
 pub struct CmdOutput {
@@ -162,6 +246,8 @@ impl Cmd {
             } else {
                 Stdio::null()
             });
+        // First, so that anything a step sets on purpose wins.
+        scrub_env(&mut command);
         for (key, value) in &self.env {
             command.env(key, value);
         }
@@ -307,11 +393,10 @@ fn redact_all(text: &str, secrets: &[String]) -> String {
 /// run at all. For working out what is on the machine, where a missing
 /// program is an answer rather than an error.
 pub fn capture(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .ok()?;
+    let mut command = Command::new(program);
+    command.args(args).stdin(Stdio::null());
+    scrub_env(&mut command);
+    let output = command.output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -320,14 +405,14 @@ pub fn capture(program: &str, args: &[&str]) -> Option<String> {
 
 /// Like `capture`, but the exit code is the answer.
 pub fn succeeds(program: &str, args: &[&str]) -> bool {
-    Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .stderr(Stdio::null());
+    scrub_env(&mut command);
+    command.status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// Is this program on the PATH?
@@ -362,6 +447,63 @@ mod tests {
             .args(["login", "nvcr.io", "--password", "nvapi-secret"])
             .redact("nvapi-secret");
         assert_eq!(cmd.display(), "docker login nvcr.io --password ******");
+    }
+
+    #[test]
+    fn the_appimage_mount_is_taken_out_of_a_path_list_and_nothing_else_is() {
+        let appdir = "/tmp/.mount_AUCxyz";
+        assert_eq!(
+            without_prefix(
+                "/tmp/.mount_AUCxyz/usr/bin:/usr/local/bin:/tmp/.mount_AUCxyz:/usr/bin",
+                appdir
+            ),
+            "/usr/local/bin:/usr/bin"
+        );
+        assert_eq!(
+            without_prefix("/usr/local/bin:/usr/bin", appdir),
+            "/usr/local/bin:/usr/bin",
+            "a machine that is not running an AppImage is left alone"
+        );
+        assert_eq!(
+            without_prefix("/tmp/.mount_AUCxyz-other/bin:/usr/bin", appdir),
+            "/tmp/.mount_AUCxyz-other/bin:/usr/bin",
+            "only entries under the mount go, not ones that merely start with the same letters"
+        );
+    }
+
+    #[test]
+    fn a_child_never_inherits_the_appimages_python_settings() {
+        // std::process::Command records env_remove as an explicit None, which
+        // is what a child sees as "not set" even when this process has it.
+        let mut command = Command::new("true");
+        scrub_env(&mut command);
+        let removed: Vec<String> = command
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| key.to_string_lossy().to_string())
+            .collect();
+        for var in [
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "LD_LIBRARY_PATH",
+            "GDK_PIXBUF_MODULE_FILE",
+        ] {
+            assert!(removed.iter().any(|k| k == var), "{var} should be removed");
+        }
+    }
+
+    #[test]
+    fn a_setting_a_step_asks_for_wins_over_the_scrub() {
+        // NIM_UID and friends are set by steps after the scrub, so a step can
+        // still hand a child exactly what it needs.
+        let cmd = Cmd::new("true").env("PYTHONPATH", "/somewhere/on/purpose");
+        assert_eq!(
+            cmd.env,
+            vec![(
+                "PYTHONPATH".to_string(),
+                "/somewhere/on/purpose".to_string()
+            )]
+        );
     }
 
     #[test]

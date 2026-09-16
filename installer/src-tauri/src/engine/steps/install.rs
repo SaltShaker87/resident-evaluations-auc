@@ -168,6 +168,14 @@ pub fn prepare(platform: &dyn Platform, ctx: &mut Ctx, repairing: bool) -> Resul
     if let Some(name) = &system.gpu.name {
         ctx.log(format!("Graphics card: {name}."));
     }
+    let leaked = crate::engine::process::leaked_vars_present();
+    if !leaked.is_empty() {
+        ctx.log(format!(
+            "This installer was started from an AppImage, whose launcher sets {} for its own \
+             use. Programs the installer runs are given this machine's own settings instead.",
+            leaked.join(", ")
+        ));
+    }
 
     ctx.progress.done(StepId::Prepare);
     Ok(system)
