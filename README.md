@@ -26,7 +26,12 @@ and double-click it:
 |---|---|
 | An Ubuntu PC | `AUC-Installer-…-linux-x86_64.deb` |
 | NVIDIA DGX Spark or HP ZGX Nano | `AUC-Installer-…-linux-aarch64.deb` |
-| If the `.deb` does not open | the matching `.AppImage` |
+| If the `.deb` does not open | the matching `.AppImage` (installer 1.0.4 or newer) |
+
+The `.deb` is the supported way to install. The `.AppImage` is a fallback:
+before installer 1.0.4 it handed its own private settings to every program it
+ran, which made the final health check report Python problems that were not
+real.
 
 It checks the computer, asks three questions (AI summaries on or off and
 which model; whether other computers on the network may connect; on a Spark,

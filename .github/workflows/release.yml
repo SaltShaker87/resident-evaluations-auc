@@ -207,20 +207,27 @@ jobs:
           find release-assets -type f -exec cp {} release-flat/ \;
           ls -la release-flat
 
+      # Not a pre-release, and the latest: the installer asks GitHub for the
+      # latest release, and a release published as a pre-release is invisible
+      # to it (1.0.3 was, and installers kept fetching 1.0.2).
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
-          name: AUC ${{ needs.app-tarball.outputs.version }}
+          name: AUC ${{ needs.app-tarball.outputs.version }} - PGY-1
           draft: true
+          prerelease: false
+          make_latest: "true"
           generate_release_notes: true
           body: |
             ## Which file do I need?
 
             - **Ubuntu PC (Intel or AMD):** `AUC-Installer-*-linux-x86_64.deb`
             - **DGX Spark or HP ZGX Nano (ARM):** `AUC-Installer-*-linux-aarch64.deb`
-            - **If the .deb will not open:** try the matching `.AppImage` for your processor (x86_64 or aarch64).
+            - **If the .deb will not open:** try the matching `.AppImage` for your processor (x86_64 or aarch64). Use installer 1.0.4 or newer for the AppImage; older AppImages broke the final health check.
             - **Server or scripted install:** `auc-*.tar.gz` (verify with the `.sha256` file first).
             - **If the installer window opens blank:** run `WEBKIT_DISABLE_DMABUF_RENDERER=1 auc-installer` from a terminal (fixed in 1.0.2 and newer).
+
+            When publishing this draft, leave it as a full release (not a pre-release) and set as latest, or the installer will not see it.
 
             ---
 
