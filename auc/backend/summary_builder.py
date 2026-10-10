@@ -18,13 +18,18 @@ model only fills in slots**:
      comments actually routed to that sub-competency. Quotes that don't check out are
      dropped, and if nothing survives, the narrative and level are discarded rather
      than shown. Unsupported narrative text never reaches the client.
+  6. No prompt is sent that Ollama would cut short. A sub-competency with more comments
+     than fit in one prompt is read in parts, and the verified findings of the parts
+     are merged in one more call. Every reply is also checked for signs that Ollama
+     cut its prompt anyway; one that shows them is discarded, never shown.
 
-Every dropped quote and discarded narrative is written to
+Every dropped quote, discarded narrative, split and cut prompt is written to
 auc/data/logs/summary_validation.log for inspection.
 """
 
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -46,6 +51,24 @@ SUMMARY_MODEL: str = os.environ.get("AUC_SUMMARY_MODEL", OLLAMA_MODEL)
 OLLAMA_TIMEOUT_SECONDS: float = 600.0
 OLLAMA_OPTIONS: dict = {"num_ctx": 8192, "temperature": 0.2}
 OLLAMA_THINK: bool = False
+
+# How big one prompt may get. Ollama does not refuse a prompt longer than num_ctx. It
+# keeps the END, throws away the beginning, and answers anyway (measured with Ollama
+# 0.34: an 8,204-token prompt cut to its last 4,098 tokens). The beginning is where the
+# instructions, the sub-competency and the ACGME reference are, so the model writes
+# without knowing what it is assessing, its quotes still match the comments that
+# survived, and nothing on screen says anything went wrong.
+#
+# So no prompt may be more than half the window: the other half is room for the reply
+# and for estimate_tokens being off. A sub-competency whose comments would not fit is
+# read in parts instead (see _generate_split). Both numbers follow num_ctx, so changing
+# it above moves them too.
+PROMPT_TOKEN_BUDGET: int = OLLAMA_OPTIONS["num_ctx"] // 2 - 512
+
+# A reply that says Ollama read at least this many prompt tokens had its prompt cut.
+# Ollama's cut keeps num_ctx minus half of it, so a cut prompt always lands here or just
+# above (the 4,098 above), and PROMPT_TOKEN_BUDGET keeps every prompt AUC sends below it.
+TRUNCATION_SIGNAL: int = OLLAMA_OPTIONS["num_ctx"] // 2
 
 # Ask Ollama to constrain decoding to valid JSON. This is belt-and-braces on top of the
 # defensive parser below — set to False if a model misbehaves with it.
@@ -167,17 +190,8 @@ def _empty_section(entry, status, note=None):
 # Prompt for a single sub-competency
 # ---------------------------------------------------------------------------
 
-def build_prompt(resident_label, entry, descriptor, comments):
-    """Build the prompt for exactly one sub-competency.
-
-    Contains only this sub-competency's descriptor and only the comments routed to it.
-    """
-    numbered = "\n".join(
-        f"{i}. {(c.get('text') or '').strip()}"
-        for i, c in enumerate(comments, start=1)
-    )
-
-    reference = (
+def _reference_block(descriptor):
+    return (
         "REFERENCE — the official ACGME descriptor for this sub-competency. This is\n"
         "background to help you judge where the resident sits. It is NOT about this\n"
         "resident and must not appear in your answer:\n"
@@ -185,13 +199,38 @@ def build_prompt(resident_label, entry, descriptor, comments):
         if descriptor else ""
     )
 
+
+def build_prompt(resident_label, entry, descriptor, comments, part=None):
+    """Build the prompt for exactly one sub-competency.
+
+    Contains only this sub-competency's descriptor and only the comments routed to it.
+
+    part is (first, last, total) when the comments are one part of a sub-competency
+    too big for one prompt: they are numbered first..last and the model is told the
+    rest are read separately. Without it the prompt is exactly what it always was.
+    """
+    first = part[0] if part else 1
+    numbered = "\n".join(
+        f"{i}. {(c.get('text') or '').strip()}"
+        for i, c in enumerate(comments, start=first)
+    )
+
+    if part:
+        heading = (
+            f"COMMENTS about this resident that were routed to this sub-competency — "
+            f"comments {part[0]} to {part[1]} of {part[2]}. The others are being read "
+            f"separately, so write only about these:\n"
+        )
+    else:
+        heading = "COMMENTS about this resident that were routed to this sub-competency:\n"
+
     return (
         f"You are drafting ONE section of a Clinical Competency Committee report for "
         f"{resident_label}.\n\n"
         f"SUB-COMPETENCY: {entry['id']} — {entry['name']}\n"
         f"COMPETENCY DOMAIN: {entry['domain_name']}\n\n"
-        f"{reference}\n"
-        f"COMMENTS about this resident that were routed to this sub-competency:\n"
+        f"{_reference_block(descriptor)}\n"
+        f"{heading}"
         f"{numbered}\n\n"
         "Write 2 to 3 sentences about THIS resident, in your own words, based only on "
         "the comments above.\n\n"
@@ -212,10 +251,137 @@ def build_prompt(resident_label, entry, descriptor, comments):
     )
 
 
+def build_combine_prompt(resident_label, entry, descriptor, findings):
+    """Build the prompt that merges the parts of a sub-competency read in parts.
+
+    findings are sections that already passed validate_section, so everything shown
+    here is a narrative backed by at least one verified quote, and every quote is the
+    evaluator's own wording. A part whose narrative was discarded is not among them:
+    unsupported text never feeds the merged one.
+    """
+    blocks = []
+    for i, finding in enumerate(findings, start=1):
+        level = finding.get("level")
+        # One line each; find_verbatim matches across the line breaks this removes.
+        quotes = "\n".join(f"- {' '.join(q['text'].split())}" for q in finding["quotes"])
+        blocks.append(
+            f"PART {i} (suggested level: {level if level is not None else 'none'})\n"
+            f"Summary: {finding['narrative']}\n"
+            f"VERIFIED QUOTES:\n{quotes}"
+        )
+    parts = "\n\n".join(blocks)
+
+    return (
+        f"You are drafting ONE section of a Clinical Competency Committee report for "
+        f"{resident_label}.\n\n"
+        f"SUB-COMPETENCY: {entry['id']} — {entry['name']}\n"
+        f"COMPETENCY DOMAIN: {entry['domain_name']}\n\n"
+        f"{_reference_block(descriptor)}\n"
+        f"There were too many comments about this resident for this sub-competency to "
+        f"read at once, so they were read in {len(findings)} parts. This is what each "
+        f"part found:\n\n"
+        f"{parts}\n\n"
+        "Write 2 to 3 sentences about THIS resident, in your own words, that combine "
+        "these findings into one assessment. If the parts disagree, say so.\n\n"
+        "Rules:\n"
+        "- Do not quote, paraphrase, echo, or reuse any wording from the REFERENCE "
+        "section. Write as if you had never seen it.\n"
+        "- Do not state anything the parts above do not support. Do not invent "
+        "rotations, events, dates, patients, or behaviors.\n"
+        "- Do not mention other sub-competencies, and do not mention the parts.\n"
+        "- Suggest one milestone level from 1 to 5 for committee discussion.\n"
+        f"- In \"quotes\", copy 1 to {MAX_QUOTES} of the VERIFIED QUOTES above, "
+        "character for character, exactly as written. A snippet that is not an exact "
+        "copy will be discarded.\n\n"
+        "Respond with a single JSON object and nothing else. No markdown, no code "
+        "fences, no explanation before or after:\n"
+        '{"level": 3, "narrative": "...", "quotes": ["exact snippet", "exact snippet"]}'
+    )
+
+
 _RETRY_SUFFIX = (
     "\n\nYour previous reply could not be parsed. Reply with the JSON object only — "
     "starting with { and ending with } — and nothing else."
 )
+
+
+# ---------------------------------------------------------------------------
+# Prompt size — keep every prompt whole
+# ---------------------------------------------------------------------------
+
+_TOKEN_PIECE_RE = re.compile(r"[A-Za-z]+|\S")
+
+
+def estimate_tokens(text):
+    """A deliberately high guess at how many tokens `text` is.
+
+    Ollama has no endpoint that counts tokens, so this guesses. It was checked against
+    real tokenizers (Llama 3's and OpenAI's cl100k) on AUC's own prompts: about 1.3
+    times the true count on evaluation prose, and about the true count on clinical
+    shorthand ("K 5.9 -> Ca gluc 1g IV"), where every digit and symbol is a token of
+    its own. Counting characters instead would be badly wrong one way or the other.
+    Guessing high only means reading a sub-competency in parts a little early.
+    """
+    count = 0
+    for piece in _TOKEN_PIECE_RE.findall(text or ""):
+        if piece.isascii() and piece.isalpha():
+            length = len(piece)
+            # Short words are one token; longer ones are more often split.
+            count += 1 if length <= 6 else 2 if length <= 10 else math.ceil(length / 3)
+        else:
+            # A digit, a punctuation mark, or a character outside plain English.
+            count += 1
+    return count
+
+
+class PromptTruncated(Exception):
+    """Ollama did not read the whole prompt, so its reply cannot be trusted."""
+
+    def __init__(self, evaluated, estimated):
+        super().__init__(
+            f"Ollama read {evaluated} prompt tokens of a prompt estimated at {estimated}"
+        )
+        self.evaluated = evaluated
+        self.estimated = estimated
+
+
+def check_not_truncated(prompt, prompt_eval_count):
+    """Raise PromptTruncated if Ollama's reply shows it cut the prompt.
+
+    prompt_eval_count is how many prompt tokens Ollama says it read, counting any it
+    reused from an earlier call. Two signs of a cut:
+
+      - It reached TRUNCATION_SIGNAL, the point every cut lands on.
+      - It is under a third of the estimate. That is a cut at a smaller window than
+        num_ctx: Ollama quietly lowers num_ctx to a model's own maximum when that is
+        smaller. A third, not a half, because text full of long common words
+        ("professionalism", "communication") can make the estimate 2.6 times too high.
+
+    A reply without the count (an older Ollama) is not checked.
+    """
+    if isinstance(prompt_eval_count, bool) or not isinstance(prompt_eval_count, int):
+        return
+    if prompt_eval_count <= 0:
+        return
+    estimated = estimate_tokens(prompt)
+    if prompt_eval_count >= TRUNCATION_SIGNAL or prompt_eval_count < estimated // 3:
+        raise PromptTruncated(prompt_eval_count, estimated)
+
+
+def _split_evenly(items, fits, start=1):
+    """Split items into the fewest consecutive, evenly sized runs that all fit.
+
+    fits(run, first) says whether the run beginning at items[first] fits in one prompt.
+    Tries start runs, then one more each time. Returns [(first, run), ...], or None if
+    even runs of one item each do not all fit.
+    """
+    total = len(items)
+    for count in range(max(1, start), total + 1):
+        bounds = [i * total // count for i in range(count + 1)]
+        runs = [(bounds[i], items[bounds[i]:bounds[i + 1]]) for i in range(count)]
+        if all(fits(run, first) for first, run in runs):
+            return runs
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +392,10 @@ _FENCE_RE = re.compile(r"^\s*```(?:json|JSON)?\s*|\s*```\s*$")
 
 
 async def call_ollama(client, model, prompt):
-    """One non-streaming generate call. Returns the raw response text."""
+    """One non-streaming generate call. Returns the raw response text.
+
+    Raises PromptTruncated if the reply shows Ollama did not read the whole prompt.
+    """
     payload = {
         "model": model,
         "prompt": prompt,
@@ -239,7 +408,9 @@ async def call_ollama(client, model, prompt):
 
     response = await client.post(f"{OLLAMA_URL}/api/generate", json=payload)
     response.raise_for_status()
-    return response.json().get("response", "")
+    body = response.json()
+    check_not_truncated(prompt, body.get("prompt_eval_count"))
+    return body.get("response", "")
 
 
 def parse_model_json(raw):
@@ -356,14 +527,17 @@ def _coerce_level(value):
     return level if 1 <= level <= 5 else None
 
 
-def validate_section(entry, parsed, comments, logger, log_prefix):
+def validate_section(entry, parsed, comments, logger, log_prefix, tag=None):
     """Turn a parsed model reply into a validated section dict.
 
     Drops unverifiable quotes. If nothing survives, discards the narrative and level
     entirely and returns an `insufficient_evidence` section — the discarded text goes
     to the log and never to the client.
+
+    tag names the call in the log, e.g. "PC1 part 2/3"; it defaults to the id.
     """
     sub_id = entry["id"]
+    tag = tag or sub_id
     narrative = parsed.get("narrative")
     narrative = narrative.strip() if isinstance(narrative, str) else ""
     level = _coerce_level(parsed.get("level"))
@@ -382,7 +556,7 @@ def validate_section(entry, parsed, comments, logger, log_prefix):
         if not isinstance(raw_quote, str):
             dropped += 1
             logger.info(
-                "%s %s DROPPED QUOTE (not a string): %r", log_prefix, sub_id, raw_quote
+                "%s %s DROPPED QUOTE (not a string): %r", log_prefix, tag, raw_quote
             )
             continue
 
@@ -391,7 +565,7 @@ def validate_section(entry, parsed, comments, logger, log_prefix):
             dropped += 1
             logger.info(
                 "%s %s DROPPED QUOTE (not found verbatim in routed comments): %s",
-                log_prefix, sub_id, _flat(raw_quote),
+                log_prefix, tag, _flat(raw_quote),
             )
             continue
 
@@ -408,7 +582,7 @@ def validate_section(entry, parsed, comments, logger, log_prefix):
         logger.info(
             "%s %s DISCARDED NARRATIVE (zero quotes survived validation; "
             "level=%s): %s",
-            log_prefix, sub_id, parsed.get("level"), _flat(narrative, 800),
+            log_prefix, tag, parsed.get("level"), _flat(narrative, 800),
         )
         section = _empty_section(entry, STATUS_INSUFFICIENT)
         section["dropped_quote_count"] = dropped
@@ -417,7 +591,7 @@ def validate_section(entry, parsed, comments, logger, log_prefix):
     if not narrative:
         logger.info(
             "%s %s DISCARDED (quotes validated but narrative was empty)",
-            log_prefix, sub_id,
+            log_prefix, tag,
         )
         section = _empty_section(entry, STATUS_INSUFFICIENT)
         section["dropped_quote_count"] = dropped
@@ -578,20 +752,43 @@ async def generate_report(resident_id, resident_label, comments, model=None, *, 
 async def _generate_one(
     client, model, resident_label, entry, descriptor, evidence, logger, log_prefix
 ):
-    """One sub-competency: call, parse (with one retry), validate."""
-    sub_id = entry["id"]
+    """One sub-competency: one call if its comments fit in one prompt, else in parts."""
     prompt = build_prompt(resident_label, entry, descriptor, evidence)
+    estimated = estimate_tokens(prompt)
+    if estimated <= PROMPT_TOKEN_BUDGET:
+        return await _call_and_validate(
+            client, model, entry, prompt, evidence, logger, log_prefix, entry["id"]
+        )
+    return await _generate_split(
+        client, model, resident_label, entry, descriptor, evidence, logger, log_prefix,
+        estimated,
+    )
 
+
+async def _call_and_validate(client, model, entry, prompt, comments, logger, log_prefix, tag):
+    """One call: send, parse (with one retry), validate against `comments`.
+
+    tag names the call in the log: the sub-competency id, or e.g. "PC1 part 2/3".
+    """
     for attempt in (1, 2):
         attempt_prompt = prompt if attempt == 1 else prompt + _RETRY_SUFFIX
         try:
             raw = await call_ollama(client, model, attempt_prompt)
         except httpx.ConnectError as e:
-            logger.error("%s %s OLLAMA UNREACHABLE: %s", log_prefix, sub_id, e)
+            logger.error("%s %s OLLAMA UNREACHABLE: %s", log_prefix, tag, e)
             return _empty_section(entry, STATUS_FAILED, "Could not reach Ollama")
+        except PromptTruncated as e:
+            # No retry: the same prompt would be cut the same way. The reply is not
+            # parsed, so nothing the model wrote from a cut prompt can be shown.
+            logger.error(
+                "%s %s TRUNCATED (Ollama read %d prompt tokens; estimated %d; num_ctx=%d) "
+                "— reply discarded",
+                log_prefix, tag, e.evaluated, e.estimated, OLLAMA_OPTIONS["num_ctx"],
+            )
+            return _empty_section(entry, STATUS_FAILED, "Ollama cut the prompt short")
         except Exception as e:
             logger.error(
-                "%s %s REQUEST FAILED (attempt %d): %s", log_prefix, sub_id, attempt, e
+                "%s %s REQUEST FAILED (attempt %d): %s", log_prefix, tag, attempt, e
             )
             if attempt == 2:
                 return _empty_section(entry, STATUS_FAILED, "Model request failed")
@@ -602,14 +799,118 @@ async def _generate_one(
         except ValueError as e:
             logger.info(
                 "%s %s PARSE FAILURE (attempt %d): %s | raw=%s",
-                log_prefix, sub_id, attempt, e, _flat(raw, 600),
+                log_prefix, tag, attempt, e, _flat(raw, 600),
             )
             if attempt == 1:
-                logger.info("%s %s RETRY", log_prefix, sub_id)
+                logger.info("%s %s RETRY", log_prefix, tag)
                 continue
-            logger.info("%s %s GENERATION FAILED after retry", log_prefix, sub_id)
+            logger.info("%s %s GENERATION FAILED after retry", log_prefix, tag)
             return _empty_section(entry, STATUS_FAILED, "Could not parse model output")
 
-        return validate_section(entry, parsed, evidence, logger, log_prefix)
+        return validate_section(entry, parsed, comments, logger, log_prefix, tag)
 
     return _empty_section(entry, STATUS_FAILED, "Could not parse model output")
+
+
+async def _generate_split(
+    client, model, resident_label, entry, descriptor, evidence, logger, log_prefix,
+    estimated,
+):
+    """A sub-competency with more comments than fit in one prompt.
+
+    The comments are split into the fewest even, consecutive parts that each fit, and
+    every part goes through the same call and validation as an ordinary section. The
+    parts that come back with verified quotes are then merged in one more call (in
+    rounds, if even their findings do not fit in one prompt), and the merged reply is
+    validated against all the sub-competency's comments.
+
+    If any call fails, the whole section fails: a summary that silently left out part
+    of the evidence is exactly what this exists to prevent. A part whose quotes could
+    not be verified is left out of the merge, so its narrative never feeds the one
+    shown. If no part has verified quotes, the section is insufficient_evidence.
+    """
+    sub_id = entry["id"]
+    total = len(evidence)
+
+    def part_fits(run, first):
+        prompt = build_prompt(
+            resident_label, entry, descriptor, run, (first + 1, first + len(run), total)
+        )
+        return estimate_tokens(prompt) <= PROMPT_TOKEN_BUDGET
+
+    parts = _split_evenly(
+        evidence, part_fits, start=max(2, math.ceil(estimated / PROMPT_TOKEN_BUDGET))
+    )
+    if parts is None:
+        logger.error(
+            "%s %s TOO LONG: a single comment does not fit in one prompt (budget %d "
+            "tokens) — section not generated",
+            log_prefix, sub_id, PROMPT_TOKEN_BUDGET,
+        )
+        return _empty_section(entry, STATUS_FAILED, "A comment is too long to summarize")
+
+    logger.info(
+        "%s %s SPLIT into %d parts (%d comments; estimated %d prompt tokens, budget %d)",
+        log_prefix, sub_id, len(parts), total, estimated, PROMPT_TOKEN_BUDGET,
+    )
+
+    dropped = 0
+    findings = []
+    for index, (first, run) in enumerate(parts, start=1):
+        prompt = build_prompt(
+            resident_label, entry, descriptor, run, (first + 1, first + len(run), total)
+        )
+        section = await _call_and_validate(
+            client, model, entry, prompt, run, logger, log_prefix,
+            f"{sub_id} part {index}/{len(parts)}",
+        )
+        dropped += section["dropped_quote_count"]
+        if section["status"] == STATUS_FAILED:
+            logger.info(
+                "%s %s GENERATION FAILED (part %d of %d failed)",
+                log_prefix, sub_id, index, len(parts),
+            )
+            return {**section, "dropped_quote_count": dropped}
+        if section["status"] == STATUS_OK:
+            findings.append(section)
+
+    def merge_fits(run, _first):
+        prompt = build_combine_prompt(resident_label, entry, descriptor, run)
+        return estimate_tokens(prompt) <= PROMPT_TOKEN_BUDGET
+
+    merge_round = 0
+    while len(findings) > 1:
+        merge_round += 1
+        groups = _split_evenly(findings, merge_fits)
+        if groups is None or len(groups) == len(findings):
+            logger.error(
+                "%s %s TOO LONG: %d findings cannot be merged within the budget (%d "
+                "tokens) — section not generated",
+                log_prefix, sub_id, len(findings), PROMPT_TOKEN_BUDGET,
+            )
+            return _empty_section(entry, STATUS_FAILED, "Too much evidence to summarize")
+
+        merged = []
+        for index, (_first, group) in enumerate(groups, start=1):
+            if len(group) == 1:
+                merged.append(group[0])
+                continue
+            prompt = build_combine_prompt(resident_label, entry, descriptor, group)
+            section = await _call_and_validate(
+                client, model, entry, prompt, evidence, logger, log_prefix,
+                f"{sub_id} merge {merge_round}.{index}",
+            )
+            dropped += section["dropped_quote_count"]
+            if section["status"] == STATUS_FAILED:
+                logger.info("%s %s GENERATION FAILED (merge failed)", log_prefix, sub_id)
+                return {**section, "dropped_quote_count": dropped}
+            if section["status"] == STATUS_OK:
+                merged.append(section)
+        findings = merged
+
+    if not findings:
+        section = _empty_section(entry, STATUS_INSUFFICIENT)
+        section["dropped_quote_count"] = dropped
+        return section
+
+    return {**findings[0], "dropped_quote_count": dropped}

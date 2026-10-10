@@ -1127,7 +1127,10 @@ For reference: you measured a full 21-section run at 3 minutes 11 seconds on a
   reloaded 21 times. `ollama ps` during a run should show it resident
   throughout.
 - `num_ctx` is set to 8192. A larger context costs memory per call; on shared
-  memory that is worth watching with `free -h` during a run.
+  memory that is worth watching with `free -h` during a run. Requests are kept
+  under half of it (`PROMPT_TOKEN_BUDGET` in `summary_builder.py`, which follows
+  `num_ctx` if you change it); a sub-competency with more comments than that is
+  read in parts, and the log says `SPLIT`.
 
 ---
 

@@ -141,6 +141,9 @@ async def run_trial(client, model, trial, logger):
         raw = await summary_builder.call_ollama(client, model, prompt)
     except httpx.HTTPStatusError as e:
         return {"error": f"Ollama returned {e.response.status_code}: {e.response.text[:200]}"}
+    except summary_builder.PromptTruncated as e:
+        return {"error": f"Ollama cut the prompt short ({e}). Its context window is "
+                         f"smaller than this model needs."}
     except Exception as e:
         return {"error": f"Could not reach Ollama: {e}"}
     elapsed = time.monotonic() - started
