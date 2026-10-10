@@ -122,6 +122,19 @@ auc/data/logs/summary_validation.log
 Read it any time (`tail -f auc/data/logs/summary_validation.log`) to see exactly what
 the model tried to claim and what the app refused to show.
 
+Two more lines can appear there, both about size:
+
+- **`SPLIT`**: one sub-competency had more comments than fit in one request to the
+  model (several dozen routed to that one sub-competency), so they were read in
+  parts and the parts' verified findings merged into one section. The card looks
+  like any other; every quote on it is still checked against the comments.
+- **`TRUNCATED`**: the model reported reading less than the whole request. Ollama
+  does this without an error when a request is too long for the model's window: it
+  keeps the end and drops the beginning, which holds the instructions. The section
+  is shown as "Could not generate this section" rather than as text written without
+  them. With the window AUC asks for this should not happen; if it does, the model
+  in use has a smaller window of its own, and a different model is the fix.
+
 ### A note on small models
 
 Smaller models tend to paraphrase instead of quoting exactly, so more of their
