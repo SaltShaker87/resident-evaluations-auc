@@ -33,9 +33,16 @@
 .env
 .env.local
 .env.*.local
+__pycache__/
 
 # --- OS / IDE ---
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# --- Benchmark output (bench/) ---
+# Raw timings, prompts and server logs from bench/ runs: synthetic data only,
+# but tied to one machine and tens of MB per session. The numbers worth keeping
+# go into bench/baseline-<date>.json, which is tracked.
+bench/results/
