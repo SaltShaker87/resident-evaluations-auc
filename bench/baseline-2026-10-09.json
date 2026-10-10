@@ -1,0 +1,253 @@
+{
+ "_about": "Baseline for bench/: AUC summary pipeline on 10 synthetic residents (326 comments), two 10-resident batches per engine, one request at a time. Compare a new run's results/pooled.json against 'engines' below. Times in seconds, speeds in tokens/s.",
+ "date": "2026-10-09",
+ "machine": "NVIDIA GB10 (DGX Spark platform), 128 GB unified memory, driver 580.178.04, CUDA 13.0, Ubuntu 24.04.5",
+ "auc_version": "1.0.4",
+ "auc_settings": {
+  "num_ctx": 8192,
+  "temperature": 0.2,
+  "think": false,
+  "format": "json",
+  "keep_alive": "not sent (server default 5m)",
+  "requests": "sequential"
+ },
+ "retrieval_engine": "nemotron (NeMo Retriever embed + rerank NIMs)",
+ "versions": {
+  "ollama": "0.34.0 (native systemd install; bundled llama-server build 0f3a71be1)",
+  "model_ollama_llamacpp": "nemotron-3.5-lightning, Q4_K_M GGUF, sha256 5c19f6282f4fc51cb114cb6c876d70ca2fc3b9cf0fbd0a018d9908f4fe1f63b3",
+  "llama_cpp_upstream": "commit f39148a, built with -DCMAKE_CUDA_ARCHITECTURES=121",
+  "vllm": "0.27.1 (vllm/vllm-openai:v0.27.1), nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+ },
+ "engines": {
+  "Ollama 0.34.0 (production)": {
+   "batches_s": [
+    296.8,
+    292.9
+   ],
+   "batch_avg_s": 294.8,
+   "per_resident_avg_s": 29.5,
+   "resident05_avg_s": 30.7,
+   "reading_tps": 2174,
+   "writing_tps": 89.4,
+   "share_pct": {
+    "reading": 26.7,
+    "writing": 60.9,
+    "loading": 2.6,
+    "retrieval": 7.2,
+    "other": 2.6
+   },
+   "loading_s_per_batch": 7.7,
+   "gen_tokens_median": 107,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  },
+  "llama.cpp upstream, MTP on": {
+   "batches_s": [
+    281.9,
+    282.7
+   ],
+   "batch_avg_s": 282.3,
+   "per_resident_avg_s": 28.2,
+   "resident05_avg_s": 28.6,
+   "reading_tps": 2470,
+   "writing_tps": 85.8,
+   "share_pct": {
+    "reading": 24.4,
+    "writing": 66.0,
+    "loading": 0.0,
+    "retrieval": 7.6,
+    "other": 2.0
+   },
+   "loading_s_per_batch": 0.0,
+   "gen_tokens_median": 107,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  },
+  "llama.cpp upstream, MTP off": {
+   "batches_s": [
+    296.1,
+    300.2
+   ],
+   "batch_avg_s": 298.2,
+   "per_resident_avg_s": 29.8,
+   "resident05_avg_s": 30.1,
+   "reading_tps": 2719,
+   "writing_tps": 77.1,
+   "share_pct": {
+    "reading": 21.0,
+    "writing": 69.8,
+    "loading": 0.0,
+    "retrieval": 7.2,
+    "other": 2.0
+   },
+   "loading_s_per_batch": 0.0,
+   "gen_tokens_median": 109,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  },
+  "Ollama's llama-server run directly": {
+   "batches_s": [
+    283.1,
+    280.2
+   ],
+   "batch_avg_s": 281.6,
+   "per_resident_avg_s": 28.2,
+   "resident05_avg_s": 29.0,
+   "reading_tps": 2464,
+   "writing_tps": 86.3,
+   "share_pct": {
+    "reading": 24.5,
+    "writing": 65.3,
+    "loading": 0.0,
+    "retrieval": 7.6,
+    "other": 2.6
+   },
+   "loading_s_per_batch": 0.0,
+   "gen_tokens_median": 106,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  },
+  "vLLM NVFP4, no speculation": {
+   "batches_s": [
+    238.9,
+    238.7
+   ],
+   "batch_avg_s": 238.8,
+   "per_resident_avg_s": 23.9,
+   "resident05_avg_s": 23.9,
+   "reading_tps": 5175,
+   "writing_tps": 82.0,
+   "share_pct": {
+    "reading": 13.8,
+    "writing": 77.3,
+    "loading": 0.0,
+    "retrieval": 8.9,
+    "other": 0.0
+   },
+   "loading_s_per_batch": 0.0,
+   "gen_tokens_median": 101,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  },
+  "vLLM NVFP4, MTP 2": {
+   "batches_s": [
+    241.0,
+    235.4
+   ],
+   "batch_avg_s": 238.2,
+   "per_resident_avg_s": 23.8,
+   "resident05_avg_s": 25.7,
+   "reading_tps": 4421,
+   "writing_tps": 85.5,
+   "share_pct": {
+    "reading": 16.2,
+    "writing": 74.8,
+    "loading": 0.0,
+    "retrieval": 8.9,
+    "other": 0.0
+   },
+   "loading_s_per_batch": 0.0,
+   "gen_tokens_median": 101,
+   "prompt_tokens_max": 1987,
+   "calls": 298,
+   "retries": 0,
+   "sections_ok": 298
+  }
+ },
+ "cold_start": {
+  "ollama_model_load_s": 7.6,
+  "ollama_first_load_today": "14.2 s load + 8.3 s slow first prompt",
+  "kernel_compile_probe": [
+   {
+    "trial": "bundled-1-fresh-cache",
+    "startup_s": 40.33,
+    "first_prompt_ms": 20693.7,
+    "cuda_cache_mb_after": 171.8
+   },
+   {
+    "trial": "bundled-2-warm-cache",
+    "startup_s": 18.97,
+    "first_prompt_ms": 630.3,
+    "cuda_cache_mb_after": 171.8
+   },
+   {
+    "trial": "upstream-1-fresh-cache",
+    "startup_s": 18.83,
+    "first_prompt_ms": 731.3,
+    "cuda_cache_mb_after": 79.9
+   }
+  ],
+  "llamacpp_upstream_server_start_s": 19.4,
+  "vllm_server_start_s": 275.5
+ },
+ "truncation_probe": {
+  "num_ctx": 8192,
+  "rows": [
+   {
+    "comments": 5,
+    "prompt_eval_count": 1023,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 25,
+    "prompt_eval_count": 1604,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 50,
+    "prompt_eval_count": 2285,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 100,
+    "prompt_eval_count": 3711,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 150,
+    "prompt_eval_count": 5216,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 175,
+    "prompt_eval_count": 5926,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 200,
+    "prompt_eval_count": 6715,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 250,
+    "prompt_eval_count": 4098,
+    "done_reason": "stop",
+    "section_status": "ok"
+   },
+   {
+    "comments": 300,
+    "prompt_eval_count": 4098,
+    "done_reason": "stop",
+    "section_status": "ok"
+   }
+  ],
+  "note": "Above 8,192 prompt tokens Ollama 0.34.0 keeps only the last 4,098 (WARN 'truncating input prompt' in its log); the API reply looks normal."
+ }
+}

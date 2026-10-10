@@ -1,0 +1,1369 @@
+{
+ "seed": 20261009,
+ "residents": [
+  {
+   "id": "synthetic-01",
+   "label": "Synthetic Resident 01, PGY-1",
+   "comments": [
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "committee note, source=peer, tagged domain=Medical Knowledge, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "In clinic, chronic disease management for diabetic patients is methodical and preventive care gaps are closed at each visit.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Chief Resident, score=7, 2026-01-08"
+    },
+    {
+     "text": "Outpatient management for patients with multiple chronic conditions is still overwhelming for him; visits run long.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Uses secondary sources well, calling the nursing home and the outpatient cardiologist to fill gaps in the patient interview.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Chief Resident, score=3.5, 2026-02-01"
+    },
+    {
+     "text": "In clinic, chronic disease management for diabetic patients is methodical and preventive care gaps are closed at each visit.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Fellow, score=6, 2026-02-08"
+    },
+    {
+     "text": "Consultation request and response could be more focused; questions to consultants are sometimes vague.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Attending C, score=3.5, 2026-02-15"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "committee note, source=nursing, tagged domain=Practice-Based Learning, 2026-03-01 10:00:00"
+    },
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending A, score=4.5, 2026-03-08"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "In clinic, chronic disease management for diabetic patients is methodical and preventive care gaps are closed at each visit.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-03-22 10:00:00"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-02",
+   "label": "Synthetic Resident 02, PGY-2",
+   "comments": [
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=chief resident, tagged domain=Communication, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Needs prompting to think about high-value care; ordered daily labs on stable patients for most of the week.",
+     "label": "committee note, source=attending, tagged domain=Patient Care, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Needed help with treatment selection for refractory hyponatremia and was unsure of the indications and contraindications for tolvaptan.",
+     "label": "committee note, source=attending, tagged domain=Medical Knowledge, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Models self-care and resilience for interns and talks openly about the emotional challenges of physician work.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending A, score=6, 2026-01-22"
+    },
+    {
+     "text": "Works well under pressure and keeps the team focused during busy admitting days.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending C, score=3.5, 2026-02-08"
+    },
+    {
+     "text": "Diagnostic testing is thoughtful; she discussed pretest probability before ordering a D-dimer.",
+     "label": "committee note, source=chief resident, tagged domain=Practice-Based Learning, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Critical appraisal skills are developing; she identified the main bias in the trial we discussed.",
+     "label": "committee note, source=peer, tagged domain=Communication, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Always the calmest person in the room when a patient decompensates.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Chief Resident, score=3.5, 2026-03-01"
+    },
+    {
+     "text": "Completes administrative tasks on time and is known for accountability on the team.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Inpatient management of a complicated GI bleed was excellent; the management plan anticipated the need for a second scope.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Fellow, score=3.5, 2026-03-15"
+    },
+    {
+     "text": "Hand-off quality is excellent; I-PASS sign-out is complete and the night team rarely has to call.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending B, score=5, 2026-03-22"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending A, score=7, 2026-04-01"
+    },
+    {
+     "text": "Showed some anchoring on a pneumonia diagnosis and premature closure before the CT came back showing a PE.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Clinic Preceptor, score=3.5, 2026-04-08"
+    },
+    {
+     "text": "Hand-off quality is excellent; I-PASS sign-out is complete and the night team rarely has to call.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Chief Resident, score=3, 2026-04-15"
+    },
+    {
+     "text": "Very reliable; follow-through on pending results after discharge is excellent.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Nurse Educator, score=3, 2026-04-22"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-03",
+   "label": "Synthetic Resident 03, PGY-3",
+   "comments": [
+    {
+     "text": "Was slow to escalate a deteriorating patient to the senior on one occasion.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Nurse Educator, score=7, 2026-01-01"
+    },
+    {
+     "text": "Hand-off quality is excellent; I-PASS sign-out is complete and the night team rarely has to call.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending B, score=4, 2026-01-08"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "committee note, source=program director, tagged domain=Medical Knowledge, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Requested an ethics consult appropriately and respected patient autonomy throughout.",
+     "label": "committee note, source=nursing, tagged domain=Patient Care, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "committee note, source=peer, tagged domain=Medical Knowledge, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=peer, tagged domain=Professionalism, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "committee note, source=program director, tagged domain=Patient Care, 2026-03-01 10:00:00"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Comes to rounds prepared with overnight events, vitals trends and a plan for every patient.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending A, score=4, 2026-03-15"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=nursing, tagged domain=Practice-Based Learning, 2026-03-22 10:00:00"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=program director, tagged domain=General, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "committee note, source=peer, tagged domain=Medical Knowledge, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Nurses specifically mentioned how approachable she is at three in the morning.",
+     "label": "committee note, source=nursing, tagged domain=Medical Knowledge, 2026-04-15 10:00:00"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Attending A, score=3.5, 2026-04-22"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "committee note, source=nursing, tagged domain=Medical Knowledge, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=attending, tagged domain=Practice-Based Learning, 2026-05-08 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending B, score=5, 2026-05-15"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending A, score=7, 2026-05-22"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-04",
+   "label": "Synthetic Resident 04, PGY-1",
+   "comments": [
+    {
+     "text": "Avoids stigmatizing language in notes and has coached interns on it.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Nurse Educator, score=6, 2026-01-01"
+    },
+    {
+     "text": "History taking is organized and hypothesis-driven; she reliably asks about the chief complaint timeline before jumping to the exam.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=nursing, tagged domain=Medical Knowledge, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Uses secondary sources well, calling the nursing home and the outpatient cardiologist to fill gaps in the patient interview.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Chief Resident, score=3, 2026-01-22"
+    },
+    {
+     "text": "Consultation request and response could be more focused; questions to consultants are sometimes vague.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Attending A, score=7, 2026-02-01"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "committee note, source=attending, tagged domain=Professionalism, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Attending C, score=4.5, 2026-02-15"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Clinic Preceptor, score=3, 2026-02-22"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-03-01 10:00:00"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Inpatient management of a complicated GI bleed was excellent; the management plan anticipated the need for a second scope.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Chief Resident, score=7, 2026-03-22"
+    },
+    {
+     "text": "Needed help with treatment selection for refractory hyponatremia and was unsure of the indications and contraindications for tolvaptan.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Nurse Educator, score=3, 2026-04-08"
+    },
+    {
+     "text": "Needed help with treatment selection for refractory hyponatremia and was unsure of the indications and contraindications for tolvaptan.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Attending A, score=3, 2026-04-15"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Fellow, score=7, 2026-05-01"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Chief Resident, score=7, 2026-05-08"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=peer, tagged domain=Patient Care, 2026-05-15 10:00:00"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "committee note, source=attending, tagged domain=Medical Knowledge, 2026-05-22 10:00:00"
+    },
+    {
+     "text": "Showed some anchoring on a pneumonia diagnosis and premature closure before the CT came back showing a PE.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-06-01 10:00:00"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-06-08 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-06-15 10:00:00"
+    },
+    {
+     "text": "Diagnostic testing is thoughtful; she discussed pretest probability before ordering a D-dimer.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-06-22 10:00:00"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-05",
+   "label": "Synthetic Resident 05, PGY-2",
+   "comments": [
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending A, score=7, 2026-01-01"
+    },
+    {
+     "text": "Led a QI project on reducing telemetry overuse that cut unnecessary days by a fifth on the ward.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending C, score=3.5, 2026-01-08"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Bedside examination is rushed on busy call days; abnormal findings are sometimes documented without being re-checked.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending C, score=5, 2026-01-22"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "committee note, source=attending, tagged domain=Practice-Based Learning, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "committee note, source=attending, tagged domain=Professionalism, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Self-reflection is limited; when given feedback about note timeliness he became defensive rather than curious.",
+     "label": "committee note, source=chief resident, tagged domain=Communication, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending A, score=5, 2026-02-22"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "MedHub eval, rotation=Geriatrics, evaluator=Chief Resident, score=7, 2026-03-01"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Attending A, score=4, 2026-03-08"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "committee note, source=program director, tagged domain=Systems-Based Practice, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Fellow, score=4.5, 2026-03-22"
+    },
+    {
+     "text": "Seemed close to burnout during the ICU month; we connected her with wellness resources and she used them.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending A, score=3.5, 2026-04-01"
+    },
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "committee note, source=program director, tagged domain=Systems-Based Practice, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Nurse Educator, score=4, 2026-04-15"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Was slow to escalate a deteriorating patient to the senior on one occasion.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Clinic Preceptor, score=3.5, 2026-05-01"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-05-08 10:00:00"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "committee note, source=peer, tagged domain=Medical Knowledge, 2026-05-15 10:00:00"
+    },
+    {
+     "text": "Completes administrative tasks on time and is known for accountability on the team.",
+     "label": "committee note, source=program director, tagged domain=Patient Care, 2026-05-22 10:00:00"
+    },
+    {
+     "text": "Documentation is concise and thorough; progress notes are among the best on the service.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Fellow, score=6, 2026-06-01"
+    },
+    {
+     "text": "Diagnostic testing is thoughtful; she discussed pretest probability before ordering a D-dimer.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Nurse Educator, score=4, 2026-06-08"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Clinic Preceptor, score=5, 2026-06-15"
+    },
+    {
+     "text": "Comes to rounds prepared with overnight events, vitals trends and a plan for every patient.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-06-22 10:00:00"
+    },
+    {
+     "text": "Needs prompting to think about high-value care; ordered daily labs on stable patients for most of the week.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-07-01 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-07-08 10:00:00"
+    },
+    {
+     "text": "Disclosed a medication error to a family with the attending present and handled the error disclosure with honesty.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Fellow, score=6, 2026-07-15"
+    },
+    {
+     "text": "Bedside examination is rushed on busy call days; abnormal findings are sometimes documented without being re-checked.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-07-22 10:00:00"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-06",
+   "label": "Synthetic Resident 06, PGY-3",
+   "comments": [
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Nurse Educator, score=6, 2026-01-01"
+    },
+    {
+     "text": "Seemed close to burnout during the ICU month; we connected her with wellness resources and she used them.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Chief Resident, score=3, 2026-01-08"
+    },
+    {
+     "text": "Discharge summaries are consistently late, and work-hour logs were not completed on time this quarter.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Attending A, score=5, 2026-01-15"
+    },
+    {
+     "text": "Showed some anchoring on a pneumonia diagnosis and premature closure before the CT came back showing a PE.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Builds rapport quickly with patients and uses teach-back routinely before discharge.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Fellow, score=4.5, 2026-02-01"
+    },
+    {
+     "text": "Comes to rounds prepared with overnight events, vitals trends and a plan for every patient.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Always the calmest person in the room when a patient decompensates.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending A, score=4, 2026-03-01"
+    },
+    {
+     "text": "Needed help with treatment selection for refractory hyponatremia and was unsure of the indications and contraindications for tolvaptan.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Uses secondary sources well, calling the nursing home and the outpatient cardiologist to fill gaps in the patient interview.",
+     "label": "committee note, source=attending, tagged domain=Patient Care, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "History taking is organized and hypothesis-driven; she reliably asks about the chief complaint timeline before jumping to the exam.",
+     "label": "committee note, source=program director, tagged domain=Systems-Based Practice, 2026-03-22 10:00:00"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "MedHub eval, rotation=Geriatrics, evaluator=Attending A, score=7, 2026-04-01"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Explains the pathophysiology of hepatorenal syndrome clearly to students and connects it to the bedside findings.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-04-15 10:00:00"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "committee note, source=attending, tagged domain=Communication, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "committee note, source=attending, tagged domain=Practice-Based Learning, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-05-08 10:00:00"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "committee note, source=program director, tagged domain=General, 2026-05-15 10:00:00"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-05-22 10:00:00"
+    },
+    {
+     "text": "Gave a noon conference on Medicare and Medicaid coverage gaps that residents found very useful.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Chief Resident, score=6, 2026-06-01"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=attending, tagged domain=Medical Knowledge, 2026-06-08 10:00:00"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=program director, tagged domain=Communication, 2026-06-15 10:00:00"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=peer, tagged domain=Professionalism, 2026-06-22 10:00:00"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Attending C, score=4, 2026-07-01"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=chief resident, tagged domain=Communication, 2026-07-08 10:00:00"
+    },
+    {
+     "text": "Explains the pathophysiology of hepatorenal syndrome clearly to students and connects it to the bedside findings.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-07-15 10:00:00"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-07-22 10:00:00"
+    },
+    {
+     "text": "Builds rapport quickly with patients and uses teach-back routinely before discharge.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-08-01 10:00:00"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending A, score=3, 2026-08-08"
+    },
+    {
+     "text": "In clinic, chronic disease management for diabetic patients is methodical and preventive care gaps are closed at each visit.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending C, score=3.5, 2026-08-15"
+    },
+    {
+     "text": "Requested an ethics consult appropriately and respected patient autonomy throughout.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-08-22 10:00:00"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-07",
+   "label": "Synthetic Resident 07, PGY-1",
+   "comments": [
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Clinic Preceptor, score=7, 2026-01-01"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending A, score=4.5, 2026-01-08"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Chief Resident, score=3.5, 2026-01-15"
+    },
+    {
+     "text": "Builds rapport quickly with patients and uses teach-back routinely before discharge.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Attending C, score=3.5, 2026-01-22"
+    },
+    {
+     "text": "Very reliable; follow-through on pending results after discharge is excellent.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending B, score=4.5, 2026-02-01"
+    },
+    {
+     "text": "Shared decision making with patients is a strength; she lays out options without steering.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending B, score=3.5, 2026-02-08"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Clinic Preceptor, score=3, 2026-02-15"
+    },
+    {
+     "text": "Professional behavior on the wards is exemplary; she accepts responsibility for misses without deflecting.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Nurse Educator, score=3, 2026-02-22"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending C, score=5, 2026-03-01"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending B, score=3, 2026-03-08"
+    },
+    {
+     "text": "Was slow to escalate a deteriorating patient to the senior on one occasion.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Requested an ethics consult appropriately and respected patient autonomy throughout.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-03-22 10:00:00"
+    },
+    {
+     "text": "Bedside examination is rushed on busy call days; abnormal findings are sometimes documented without being re-checked.",
+     "label": "committee note, source=nursing, tagged domain=Practice-Based Learning, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Nurses specifically mentioned how approachable she is at three in the morning.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Fellow, score=7, 2026-04-15"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "committee note, source=attending, tagged domain=Communication, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Always the calmest person in the room when a patient decompensates.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Nurse Educator, score=4, 2026-05-08"
+    },
+    {
+     "text": "Understands observation versus inpatient status and explains cost of care considerations to families.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Fellow, score=6, 2026-05-15"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Chief Resident, score=7, 2026-05-22"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-06-01 10:00:00"
+    },
+    {
+     "text": "Asked thoughtful questions at the Friday teaching conference.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Chief Resident, score=7, 2026-06-08"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-06-15 10:00:00"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending A, score=5, 2026-06-22"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=attending, tagged domain=Patient Care, 2026-07-01 10:00:00"
+    },
+    {
+     "text": "Works well under pressure and keeps the team focused during busy admitting days.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending A, score=4.5, 2026-07-08"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "committee note, source=peer, tagged domain=Systems-Based Practice, 2026-07-15 10:00:00"
+    },
+    {
+     "text": "Documentation is concise and thorough; progress notes are among the best on the service.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-07-22 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Nurse Educator, score=3, 2026-08-01"
+    },
+    {
+     "text": "Note quality slips on post-call days with copy-forward errors in the assessment and plan.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-08-08 10:00:00"
+    },
+    {
+     "text": "Filed a safety event report after a near miss with an insulin order and walked the team through the root cause analysis.",
+     "label": "committee note, source=attending, tagged domain=Patient Care, 2026-08-15 10:00:00"
+    },
+    {
+     "text": "History taking is organized and hypothesis-driven; she reliably asks about the chief complaint timeline before jumping to the exam.",
+     "label": "committee note, source=peer, tagged domain=Professionalism, 2026-08-22 10:00:00"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=peer, tagged domain=Patient Care, 2026-09-01 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-09-08 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-09-15 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending B, score=3.5, 2026-09-22"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Fellow, score=4, 2026-01-01"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending B, score=4.5, 2026-01-08"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-08",
+   "label": "Synthetic Resident 08, PGY-2",
+   "comments": [
+    {
+     "text": "Professional behavior on the wards is exemplary; she accepts responsibility for misses without deflecting.",
+     "label": "committee note, source=peer, tagged domain=Communication, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Used motivational interviewing with a patient ambivalent about statins and documented a realistic follow-up plan.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Nurse Educator, score=6, 2026-01-15"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending C, score=3, 2026-01-22"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Nurse Educator, score=4, 2026-02-01"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Fellow, score=3, 2026-02-08"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Asked thoughtful questions at the Friday teaching conference.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-03-01 10:00:00"
+    },
+    {
+     "text": "Critical appraisal skills are developing; she identified the main bias in the trial we discussed.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Therapeutic knowledge is solid; she weighed the risks and benefits of anticoagulation in an elderly fall-risk patient carefully.",
+     "label": "committee note, source=chief resident, tagged domain=Communication, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Uses secondary sources well, calling the nursing home and the outpatient cardiologist to fill gaps in the patient interview.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending C, score=3, 2026-03-22"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Discharge summaries are consistently late, and work-hour logs were not completed on time this quarter.",
+     "label": "committee note, source=attending, tagged domain=Communication, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Punctuality has been an issue on the ambulatory block, arriving late to clinic three times this month.",
+     "label": "committee note, source=program director, tagged domain=Professionalism, 2026-04-15 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=peer, tagged domain=Systems-Based Practice, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Took on extra admissions when a colleague was out sick without being asked.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending B, score=3.5, 2026-05-01"
+    },
+    {
+     "text": "Always the calmest person in the room when a patient decompensates.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Attending C, score=6, 2026-05-08"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-05-15 10:00:00"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-05-22 10:00:00"
+    },
+    {
+     "text": "Nurses specifically mentioned how approachable she is at three in the morning.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Chief Resident, score=7, 2026-06-01"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending C, score=4.5, 2026-06-08"
+    },
+    {
+     "text": "Nurses specifically mentioned how approachable she is at three in the morning.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Chief Resident, score=7, 2026-06-15"
+    },
+    {
+     "text": "Works well under pressure and keeps the team focused during busy admitting days.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-06-22 10:00:00"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-07-01 10:00:00"
+    },
+    {
+     "text": "Would trust him to run the unit overnight without backup.",
+     "label": "committee note, source=program director, tagged domain=Communication, 2026-07-08 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=peer, tagged domain=Medical Knowledge, 2026-07-15 10:00:00"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "committee note, source=peer, tagged domain=Patient Care, 2026-07-22 10:00:00"
+    },
+    {
+     "text": "Understands observation versus inpatient status and explains cost of care considerations to families.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Nurse Educator, score=6, 2026-08-01"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "committee note, source=program director, tagged domain=Professionalism, 2026-08-08 10:00:00"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-08-15 10:00:00"
+    },
+    {
+     "text": "Medication reconciliation on admission was incomplete twice this block, missing home anticoagulants that the pharmacist caught.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Fellow, score=6, 2026-08-22"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-09-01 10:00:00"
+    },
+    {
+     "text": "Always the calmest person in the room when a patient decompensates.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending B, score=7, 2026-09-08"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Attending C, score=5, 2026-09-15"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-09-22 10:00:00"
+    },
+    {
+     "text": "Works well under pressure and keeps the team focused during busy admitting days.",
+     "label": "committee note, source=peer, tagged domain=Patient Care, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Diagnostic testing is thoughtful; she discussed pretest probability before ordering a D-dimer.",
+     "label": "committee note, source=attending, tagged domain=Practice-Based Learning, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Seemed close to burnout during the ICU month; we connected her with wellness resources and she used them.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Transitions of care need work; two patients left without a follow-up appointment arranged.",
+     "label": "committee note, source=chief resident, tagged domain=Practice-Based Learning, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Critical appraisal skills are developing; she identified the main bias in the trial we discussed.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Was slow to escalate a deteriorating patient to the senior on one occasion.",
+     "label": "committee note, source=program director, tagged domain=Medical Knowledge, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=attending, tagged domain=Professionalism, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "committee note, source=program director, tagged domain=Medical Knowledge, 2026-02-22 10:00:00"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-09",
+   "label": "Synthetic Resident 09, PGY-3",
+   "comments": [
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=nursing, tagged domain=Patient Care, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Triage of new admissions overnight showed good judgment about acuity and triage when the list grew to fourteen patients.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Clinic Preceptor, score=4.5, 2026-01-08"
+    },
+    {
+     "text": "Medication reconciliation on admission was incomplete twice this block, missing home anticoagulants that the pharmacist caught.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Inpatient management of a complicated GI bleed was excellent; the management plan anticipated the need for a second scope.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Attending B, score=3, 2026-02-01"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Chief Resident, score=3.5, 2026-02-08"
+    },
+    {
+     "text": "Needed help with treatment selection for refractory hyponatremia and was unsure of the indications and contraindications for tolvaptan.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Attending B, score=3, 2026-02-22"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Nurse Educator, score=4.5, 2026-03-01"
+    },
+    {
+     "text": "Needs prompting to think about high-value care; ordered daily labs on stable patients for most of the week.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Antibiotic stewardship is a strength; he narrows coverage promptly once cultures result.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending A, score=3, 2026-03-22"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending A, score=3.5, 2026-04-08"
+    },
+    {
+     "text": "Punctuality has been an issue on the ambulatory block, arriving late to clinic three times this month.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Attending C, score=6, 2026-04-15"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Chief Resident, score=3.5, 2026-04-22"
+    },
+    {
+     "text": "Punctuality has been an issue on the ambulatory block, arriving late to clinic three times this month.",
+     "label": "committee note, source=peer, tagged domain=Professionalism, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Shared decision making with patients is a strength; she lays out options without steering.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-05-08 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Chief Resident, score=4, 2026-05-15"
+    },
+    {
+     "text": "Outpatient management for patients with multiple chronic conditions is still overwhelming for him; visits run long.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Nurse Educator, score=3.5, 2026-05-22"
+    },
+    {
+     "text": "Therapeutic knowledge is solid; she weighed the risks and benefits of anticoagulation in an elderly fall-risk patient carefully.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Fellow, score=4.5, 2026-06-01"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=peer, tagged domain=Patient Care, 2026-06-08 10:00:00"
+    },
+    {
+     "text": "Explains the pathophysiology of hepatorenal syndrome clearly to students and connects it to the bedside findings.",
+     "label": "committee note, source=program director, tagged domain=Practice-Based Learning, 2026-06-15 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Chief Resident, score=5, 2026-06-22"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Fellow, score=3, 2026-07-01"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending C, score=4, 2026-07-08"
+    },
+    {
+     "text": "Disclosed a medication error to a family with the attending present and handled the error disclosure with honesty.",
+     "label": "committee note, source=nursing, tagged domain=Practice-Based Learning, 2026-07-15 10:00:00"
+    },
+    {
+     "text": "Understands observation versus inpatient status and explains cost of care considerations to families.",
+     "label": "committee note, source=chief resident, tagged domain=Practice-Based Learning, 2026-07-22 10:00:00"
+    },
+    {
+     "text": "Physical exam is thorough and he picked up a new diastolic murmur that the overnight team had missed.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Nurse Educator, score=3.5, 2026-08-01"
+    },
+    {
+     "text": "Would trust him to run the unit overnight without backup.",
+     "label": "committee note, source=peer, tagged domain=Professionalism, 2026-08-08 10:00:00"
+    },
+    {
+     "text": "Nurses specifically mentioned how approachable she is at three in the morning.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Chief Resident, score=5, 2026-08-15"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "committee note, source=peer, tagged domain=Practice-Based Learning, 2026-08-22 10:00:00"
+    },
+    {
+     "text": "Hand-off quality is excellent; I-PASS sign-out is complete and the night team rarely has to call.",
+     "label": "committee note, source=program director, tagged domain=Systems-Based Practice, 2026-09-01 10:00:00"
+    },
+    {
+     "text": "Shows humility and adaptability after difficult cases and talks openly about performance gaps.",
+     "label": "MedHub eval, rotation=Geriatrics, evaluator=Chief Resident, score=3.5, 2026-09-08"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-09-15 10:00:00"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-09-22 10:00:00"
+    },
+    {
+     "text": "Physical exam is thorough and he picked up a new diastolic murmur that the overnight team had missed.",
+     "label": "committee note, source=peer, tagged domain=Communication, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Models self-care and resilience for interns and talks openly about the emotional challenges of physician work.",
+     "label": "committee note, source=peer, tagged domain=General, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "committee note, source=attending, tagged domain=Practice-Based Learning, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Discharge summaries are consistently late, and work-hour logs were not completed on time this quarter.",
+     "label": "committee note, source=chief resident, tagged domain=Practice-Based Learning, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Comes to rounds prepared with overnight events, vitals trends and a plan for every patient.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Clinic Preceptor, score=3, 2026-02-08"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "committee note, source=peer, tagged domain=Communication, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "committee note, source=program director, tagged domain=Communication, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Fellow, score=6, 2026-03-01"
+    },
+    {
+     "text": "Bedside examination is rushed on busy call days; abnormal findings are sometimes documented without being re-checked.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Attending B, score=3, 2026-03-08"
+    },
+    {
+     "text": "Avoids stigmatizing language in notes and has coached interns on it.",
+     "label": "MedHub eval, rotation=Geriatrics, evaluator=Fellow, score=3, 2026-03-15"
+    },
+    {
+     "text": "Discharge summaries are consistently late, and work-hour logs were not completed on time this quarter.",
+     "label": "committee note, source=program director, tagged domain=Communication, 2026-03-22 10:00:00"
+    },
+    {
+     "text": "Punctuality has been an issue on the ambulatory block, arriving late to clinic three times this month.",
+     "label": "committee note, source=attending, tagged domain=General, 2026-04-01 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Attending C, score=6, 2026-04-08"
+    },
+    {
+     "text": "Was slow to escalate a deteriorating patient to the senior on one occasion.",
+     "label": "committee note, source=program director, tagged domain=General, 2026-04-15 10:00:00"
+    },
+    {
+     "text": "Needs prompting to think about high-value care; ordered daily labs on stable patients for most of the week.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Clinic Preceptor, score=3, 2026-04-22"
+    }
+   ]
+  },
+  {
+   "id": "synthetic-10",
+   "label": "Synthetic Resident 10, PGY-1",
+   "comments": [
+    {
+     "text": "Models self-care and resilience for interns and talks openly about the emotional challenges of physician work.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Clinic Preceptor, score=3, 2026-01-01"
+    },
+    {
+     "text": "Had one professionalism lapse during a heated exchange with a consultant; he apologized the same day.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Explains the pathophysiology of hepatorenal syndrome clearly to students and connects it to the bedside findings.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Clinic Preceptor, score=4.5, 2026-01-15"
+    },
+    {
+     "text": "Self-reflection is limited; when given feedback about note timeliness he became defensive rather than curious.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Clinic Preceptor, score=6, 2026-01-22"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "committee note, source=nursing, tagged domain=Medical Knowledge, 2026-02-01 10:00:00"
+    },
+    {
+     "text": "Had one professionalism lapse during a heated exchange with a consultant; he apologized the same day.",
+     "label": "committee note, source=chief resident, tagged domain=Communication, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Presentations are long and include too much detail for the audience.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Hand-off quality is excellent; I-PASS sign-out is complete and the night team rarely has to call.",
+     "label": "committee note, source=nursing, tagged domain=Medical Knowledge, 2026-02-22 10:00:00"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Clinic Preceptor, score=3, 2026-03-01"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Led a QI project on reducing telemetry overuse that cut unnecessary days by a fifth on the ward.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-03-15 10:00:00"
+    },
+    {
+     "text": "Filed a safety event report after a near miss with an insulin order and walked the team through the root cause analysis.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Chief Resident, score=3, 2026-03-22"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending A, score=3.5, 2026-04-01"
+    },
+    {
+     "text": "History taking is organized and hypothesis-driven; she reliably asks about the chief complaint timeline before jumping to the exam.",
+     "label": "committee note, source=program director, tagged domain=Professionalism, 2026-04-08 10:00:00"
+    },
+    {
+     "text": "Transitions of care need work; two patients left without a follow-up appointment arranged.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Fellow, score=3.5, 2026-04-15"
+    },
+    {
+     "text": "Interns on her team say they learn more from her than from anyone else this year.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Conflict resolution with nursing staff has improved; he now gives and receives feedback calmly.",
+     "label": "committee note, source=chief resident, tagged domain=Professionalism, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Had one professionalism lapse during a heated exchange with a consultant; he apologized the same day.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending A, score=3, 2026-05-08"
+    },
+    {
+     "text": "Showed some anchoring on a pneumonia diagnosis and premature closure before the CT came back showing a PE.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending B, score=5, 2026-05-15"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "MedHub eval, rotation=Geriatrics, evaluator=Chief Resident, score=5, 2026-05-22"
+    },
+    {
+     "text": "Inpatient management of a complicated GI bleed was excellent; the management plan anticipated the need for a second scope.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-06-01 10:00:00"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "MedHub eval, rotation=Wards A, evaluator=Attending A, score=3, 2026-06-08"
+    },
+    {
+     "text": "Would trust him to run the unit overnight without backup.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-06-15 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Attending C, score=3, 2026-06-22"
+    },
+    {
+     "text": "Test interpretation of ABGs and ECGs is reliable and fast during rapid responses.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Nurse Educator, score=3.5, 2026-07-01"
+    },
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Nurse Educator, score=4, 2026-07-08"
+    },
+    {
+     "text": "Tends to order broad panels without a diagnostic strategy; we discussed sensitivity and specificity in feedback.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Nurse Educator, score=3.5, 2026-07-15"
+    },
+    {
+     "text": "Strong care coordination for complex discharges, working closely with case management and social work.",
+     "label": "MedHub eval, rotation=VA Clinic, evaluator=Nurse Educator, score=3.5, 2026-07-22"
+    },
+    {
+     "text": "Applies clinical practice guidelines appropriately but sometimes struggles to frame a focused clinical question.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Chief Resident, score=4, 2026-08-01"
+    },
+    {
+     "text": "Bedside examination is rushed on busy call days; abnormal findings are sometimes documented without being re-checked.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-08-08 10:00:00"
+    },
+    {
+     "text": "History taking is organized and hypothesis-driven; she reliably asks about the chief complaint timeline before jumping to the exam.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Clinic Preceptor, score=4, 2026-08-15"
+    },
+    {
+     "text": "Struggled noticeably during the first two weeks of the cardiac unit but caught up quickly.",
+     "label": "MedHub eval, rotation=CCU, evaluator=Nurse Educator, score=7, 2026-08-22"
+    },
+    {
+     "text": "Sometimes talks over students on rounds and needs to give them more room.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending B, score=3.5, 2026-09-01"
+    },
+    {
+     "text": "Team communication is clear; uses closed-loop communication during codes and consult calls.",
+     "label": "committee note, source=nursing, tagged domain=General, 2026-09-08 10:00:00"
+    },
+    {
+     "text": "Clinical reasoning is strong; her differential diagnosis for the syncope admission was prioritized and well defended on rounds.",
+     "label": "committee note, source=attending, tagged domain=Communication, 2026-09-15 10:00:00"
+    },
+    {
+     "text": "Filed a safety event report after a near miss with an insulin order and walked the team through the root cause analysis.",
+     "label": "committee note, source=program director, tagged domain=General, 2026-09-22 10:00:00"
+    },
+    {
+     "text": "Transitions of care need work; two patients left without a follow-up appointment arranged.",
+     "label": "committee note, source=chief resident, tagged domain=Patient Care, 2026-01-01 10:00:00"
+    },
+    {
+     "text": "Transitions of care need work; two patients left without a follow-up appointment arranged.",
+     "label": "committee note, source=peer, tagged domain=Communication, 2026-01-08 10:00:00"
+    },
+    {
+     "text": "Basic science knowledge of acid-base physiology is a relative weakness that showed up on the in-training exam.",
+     "label": "committee note, source=nursing, tagged domain=Professionalism, 2026-01-15 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "committee note, source=nursing, tagged domain=Communication, 2026-01-22 10:00:00"
+    },
+    {
+     "text": "Brings primary literature to rounds and led an excellent journal club on SGLT2 inhibitors in heart failure.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending A, score=7, 2026-02-01"
+    },
+    {
+     "text": "Antibiotic stewardship is a strength; he narrows coverage promptly once cultures result.",
+     "label": "committee note, source=nursing, tagged domain=Systems-Based Practice, 2026-02-08 10:00:00"
+    },
+    {
+     "text": "Note quality slips on post-call days with copy-forward errors in the assessment and plan.",
+     "label": "committee note, source=chief resident, tagged domain=Systems-Based Practice, 2026-02-15 10:00:00"
+    },
+    {
+     "text": "Asked thoughtful questions at the Friday teaching conference.",
+     "label": "MedHub eval, rotation=Ambulatory Block, evaluator=Clinic Preceptor, score=7, 2026-02-22"
+    },
+    {
+     "text": "Built smart phrases and order sets for the heart failure clinic that the whole team now uses in the EHR.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Fellow, score=4.5, 2026-03-01"
+    },
+    {
+     "text": "Had one professionalism lapse during a heated exchange with a consultant; he apologized the same day.",
+     "label": "committee note, source=chief resident, tagged domain=General, 2026-03-08 10:00:00"
+    },
+    {
+     "text": "Actively seeks feedback after every call night and has an individualized learning plan with concrete goals.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Clinic Preceptor, score=5, 2026-03-15"
+    },
+    {
+     "text": "Medication reconciliation on admission was incomplete twice this block, missing home anticoagulants that the pharmacist caught.",
+     "label": "MedHub eval, rotation=Wards B, evaluator=Attending A, score=3.5, 2026-03-22"
+    },
+    {
+     "text": "Diagnostic testing is thoughtful; she discussed pretest probability before ordering a D-dimer.",
+     "label": "MedHub eval, rotation=Cardiology Consults, evaluator=Clinic Preceptor, score=3, 2026-04-01"
+    },
+    {
+     "text": "Uses secondary sources well, calling the nursing home and the outpatient cardiologist to fill gaps in the patient interview.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending A, score=7, 2026-04-08"
+    },
+    {
+     "text": "Critical appraisal skills are developing; she identified the main bias in the trial we discussed.",
+     "label": "committee note, source=attending, tagged domain=Systems-Based Practice, 2026-04-15 10:00:00"
+    },
+    {
+     "text": "Handled an ethical dilemma about decision-making capacity in a patient refusing dialysis with maturity.",
+     "label": "committee note, source=chief resident, tagged domain=Medical Knowledge, 2026-04-22 10:00:00"
+    },
+    {
+     "text": "Telehealth visits are efficient, though she sometimes forgets to confirm the patient's location at the start.",
+     "label": "committee note, source=attending, tagged domain=Professionalism, 2026-05-01 10:00:00"
+    },
+    {
+     "text": "Ran a family meeting with empathy and clear language, using an interpreter skillfully for a Spanish-speaking family.",
+     "label": "committee note, source=peer, tagged domain=Systems-Based Practice, 2026-05-08 10:00:00"
+    },
+    {
+     "text": "Therapeutic knowledge is solid; she weighed the risks and benefits of anticoagulation in an elderly fall-risk patient carefully.",
+     "label": "committee note, source=attending, tagged domain=Patient Care, 2026-05-15 10:00:00"
+    },
+    {
+     "text": "Self-reflection is limited; when given feedback about note timeliness he became defensive rather than curious.",
+     "label": "committee note, source=program director, tagged domain=Communication, 2026-05-22 10:00:00"
+    },
+    {
+     "text": "Presents a clear clinical impression and can articulate why lower-probability items stay on the differential diagnosis.",
+     "label": "MedHub eval, rotation=Night Float, evaluator=Clinic Preceptor, score=4, 2026-06-01"
+    },
+    {
+     "text": "Exam technique for volume status has improved a lot since the start of the year.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending A, score=6, 2026-06-08"
+    },
+    {
+     "text": "Exam technique for volume status has improved a lot since the start of the year.",
+     "label": "MedHub eval, rotation=MICU, evaluator=Attending B, score=7, 2026-06-15"
+    },
+    {
+     "text": "Outpatient management for patients with multiple chronic conditions is still overwhelming for him; visits run long.",
+     "label": "MedHub eval, rotation=ED Elective, evaluator=Attending B, score=3.5, 2026-06-22"
+    }
+   ]
+  }
+ ]
+}
