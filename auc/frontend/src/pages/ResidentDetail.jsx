@@ -5,7 +5,7 @@ import {
   Sparkles, X, AlertCircle, FileDown,
 } from 'lucide-react';
 import {
-  getResident, updateResident, deleteResident, uploadPhoto,
+  getResident, updateResident, deleteResident, uploadPhoto, deletePhoto,
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
@@ -515,7 +515,7 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
       </div>
 
       {ollamaError && (
-        <div className="text-sm" style={{ padding: '0.5rem 0', color: 'var(--red-600, #dc2626)' }}>
+        <div className="text-sm" style={{ padding: '0.5rem 0', color: 'var(--red-500)' }}>
           {ollamaError}
         </div>
       )}
@@ -760,6 +760,20 @@ export default function ResidentDetail({ showToast }) {
       loadAll();
     } catch {
       showToast('Failed to upload photo');
+    } finally {
+      e.target.value = ''; // allow choosing the same file again
+    }
+  };
+
+  const handlePhotoDelete = async (e) => {
+    e.stopPropagation();
+    if (!window.confirm('Remove this photo?')) return;
+    try {
+      await deletePhoto(id);
+      showToast('Photo removed');
+      loadAll();
+    } catch {
+      showToast('Failed to remove photo');
     }
   };
 
@@ -819,6 +833,23 @@ export default function ResidentDetail({ showToast }) {
           }}>
             <Camera size={12} />
           </div>
+          {resident.photo_filename && (
+            <button
+              type="button"
+              onClick={handlePhotoDelete}
+              title="Remove photo"
+              aria-label="Remove photo"
+              style={{
+                position: 'absolute', top: -2, right: -2,
+                width: 22, height: 22, borderRadius: '50%', padding: 0,
+                background: 'var(--red-500)', color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '2px solid white', cursor: 'pointer',
+              }}
+            >
+              <X size={12} />
+            </button>
+          )}
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
         </div>
         <div className="detail-header__info">

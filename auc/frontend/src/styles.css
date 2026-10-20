@@ -627,6 +627,11 @@ body {
   padding: 1rem 1.25rem;
 }
 
+.resident-card__info {
+  flex: 1;
+  min-width: 0; /* lets long medical school names ellipsize instead of overflowing */
+}
+
 .resident-card__info h3 {
   font-family: var(--font-display);
   font-size: 1rem;

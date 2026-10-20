@@ -81,6 +81,9 @@ export const uploadPhoto = async (residentId, file) => {
   return res.json();
 };
 
+export const deletePhoto = (residentId) =>
+  request(`/residents/${residentId}/photo`, { method: 'DELETE' });
+
 export const getPhotoUrl = (filename) =>
   filename ? `${BASE}/photos/${filename}` : null;
 
