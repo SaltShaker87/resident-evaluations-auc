@@ -19,8 +19,16 @@
 *.db-shm
 *.db-journal
 
-# MedHub exports — real evaluator comments and scores for named residents
+# MedHub exports — real evaluator comments and scores for named residents.
+# Reports are saved from the browser as web pages, under MedHub's report title,
+# with a "<name>_files" folder beside them. (The invented look-alikes the tests
+# read are named eqs_*.html, so they are not caught here.)
 *.csv
+Evaluation Questions Summary*
+Aggregate Comments Report*
+Aggregate Evaluation Report*
+medhub_report_*
+*_files/
 
 # Backup archives (backup.py output: database + photos), exported summary PDFs
 *.zip

@@ -169,30 +169,50 @@ export const getRagStatus = () => request('/rag/status');
 export const setRetrievalEngine = (engine) =>
   request('/rag/engine', { method: 'PUT', body: JSON.stringify({ engine }) });
 
-// MedHub Import
-export const parseMedhubCsv = async (file) => {
+// MedHub import — the Evaluation Questions Summary report, saved as HTML.
+// The file is sent twice: once to preview (saves nothing), once to import.
+async function sendMedhubReport(step, file) {
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(`${BASE}/medhub/parse-csv`, { method: 'POST', body: formData });
+  const res = await fetch(`${BASE}/medhub/${step}`, { method: 'POST', body: formData });
   if (res.status === 401) window.dispatchEvent(new Event('auc:unauthenticated'));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Parse failed' }));
+    const err = await res.json().catch(() => ({ detail: 'The report could not be read' }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
   }
   return res.json();
-};
+}
 
-export const importMedhubCsv = (rows, mapping, manualMatches = {}) =>
-  request('/medhub/import', {
+export const previewMedhubReport = (file) => sendMedhubReport('preview', file);
+
+export const importMedhubReport = (file) => sendMedhubReport('import', file);
+
+export const getMedhubImportLog = () => request('/medhub/import-log');
+
+export const getMedhubQuestionMap = () => request('/medhub/question-map');
+
+export const saveMedhubQuestionMap = (items) =>
+  request('/medhub/question-map', { method: 'PUT', body: JSON.stringify({ items }) });
+
+export const linkMedhubName = (name, residentId) =>
+  request('/medhub/link-name', {
     method: 'POST',
-    body: JSON.stringify({ rows, mapping, manual_matches: manualMatches }),
+    body: JSON.stringify({ name, resident_id: residentId }),
   });
+
+export const getIgnoredMedhubNames = () => request('/medhub/ignored-names');
+
+export const ignoreMedhubName = (name) =>
+  request('/medhub/ignored-names', { method: 'POST', body: JSON.stringify({ name }) });
+
+export const unignoreMedhubName = (name) =>
+  request(`/medhub/ignored-names?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+
+export const getResidentMedhub = (residentId) => request(`/medhub/residents/${residentId}`);
 
 export const syncMedhubApi = () => request('/medhub/sync', { method: 'POST' });
 
 export const getMedhubStatus = () => request('/medhub/status');
-
-export const getResidentsForMatching = () => request('/residents/list-for-matching');
 
 // Resident advancement (snapshot + undo)
 export const executeAdvancement = (plan) =>

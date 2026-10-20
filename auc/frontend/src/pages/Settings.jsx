@@ -3,6 +3,7 @@ import { Sun, Moon, GraduationCap, RotateCcw, AlertTriangle, Download, Check } f
 import { getOllamaModels, getRagStatus, setRetrievalEngine, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
 import AdvancementWizard from '../components/AdvancementWizard';
 import AdvisorsCard from '../components/AdvisorsCard';
+import MedhubSettingsCards from '../components/MedhubSettingsCards';
 
 // Index health, as one word in the tag. The sentence explaining it — and what
 // to do about it — comes from the server, so there is one wording to maintain.
@@ -276,6 +277,8 @@ export default function Settings({ theme, setTheme }) {
       </div>
 
       <AdvisorsCard />
+
+      <MedhubSettingsCards />
 
       <div className="card settings-card" style={{ marginTop: '1rem' }}>
         <div className="settings-section-title">Resident Advancement</div>
