@@ -169,9 +169,17 @@
   --text-muted: var(--slate-500);
   --border-color: var(--slate-200);
   --border-strong: var(--slate-300);
+
+  /* Charts — one hue. Line and averages carry the series colour; individual
+     ratings are a lighter step of the same hue. Validated against the surface. */
+  --chart-series: var(--blue-600);
+  --chart-points: #93c5fd;
 }
 
 [data-theme="dark"] {
+  --chart-series: var(--blue-500);
+  --chart-points: #4171b0;
+
   --bg-app: #131d2b;
   --bg-surface: #1c2a3a;
   --bg-input: #0f1924;
@@ -1427,15 +1435,243 @@ body {
   border-bottom: none;
 }
 
-/* ---- Unmatched table ---- */
-
-.unmatched-table {
+/* Tables whose cells hold sentences (questions, comments) wrap instead of
+   truncating. */
+.data-table--wrap {
   white-space: normal;
 }
 
-.unmatched-table td {
-  vertical-align: middle;
+.data-table--wrap td {
+  vertical-align: top;
   max-width: none;
+}
+
+.data-table td.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Import preview ---- */
+
+.preview-counts {
+  justify-content: flex-start;
+  padding: 1rem 0 0.5rem;
+}
+
+.preview-block {
+  margin-top: 1.5rem;
+}
+
+.preview-block__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.preview-block__desc {
+  margin-bottom: 0.75rem;
+}
+
+.preview-list {
+  margin: 0.4rem 0 0 1.1rem;
+}
+
+/* ---- Question mapping (import preview and Settings) ---- */
+
+.question-map__form {
+  margin-bottom: 1rem;
+}
+
+.question-map__form-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.question-map__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 0.75rem 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+
+.question-map__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.question-map__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .question-map__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Resident page: MedHub evaluations ---- */
+
+.mh-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.mh-key__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mh-key__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--chart-points);
+}
+
+.mh-key__line {
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--chart-series);
+}
+
+.mh-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.mh-chart {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.75rem 0.25rem;
+}
+
+.mh-chart__title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mh-chart__frame {
+  position: relative;
+}
+
+.mh-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.mh-chart__grid {
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.mh-chart__axis {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mh-chart__empty {
+  fill: var(--text-muted);
+  font-size: 12px;
+}
+
+.mh-chart__point {
+  fill: var(--chart-points);
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+
+.mh-chart__line {
+  fill: none;
+  stroke: var(--chart-series);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.mh-chart__avg {
+  fill: var(--chart-series);
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+
+.mh-chart__hit {
+  fill: transparent;
+  cursor: default;
+  outline: none;
+}
+
+.mh-chart__hit:focus-visible {
+  stroke: var(--chart-series);
+  stroke-width: 1.5;
+}
+
+.mh-chart__tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.mh-chart__tip strong {
+  color: var(--text-primary);
+}
+
+.mh-comments {
+  margin-top: 1.5rem;
+}
+
+.mh-comments__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.mh-comment {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mh-comment__meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.mh-comment__question {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.15rem 0 0.3rem;
+}
+
+.mh-comment__text {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
 }
 
 /* ---- Import summary card ---- */
@@ -1513,6 +1749,29 @@ body {
   background: var(--red-50);
   border: 1px solid var(--red-100);
   color: var(--red-700);
+}
+
+/* The MedHub page's tinted boxes, re-stepped for the dark surface. */
+[data-theme="dark"] .import-summary {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.3);
+}
+[data-theme="dark"] .import-summary__count--success .import-summary__number { color: #86efac; }
+[data-theme="dark"] .import-summary__count--warn .import-summary__number { color: #fcd34d; }
+[data-theme="dark"] .alert--warning {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: #fcd34d;
+}
+[data-theme="dark"] .alert--danger {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: #fca5a5;
+}
+[data-theme="dark"] .upload-zone:hover,
+[data-theme="dark"] .upload-zone--active {
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: none;
 }
 
 /* ---- API unconfigured notice ---- */

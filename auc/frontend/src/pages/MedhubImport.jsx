@@ -1,431 +1,492 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Upload, FileText, CheckCircle, AlertCircle, RefreshCw, Info, X,
+  Upload, FileText, CheckCircle, AlertCircle, RefreshCw, Info, X, EyeOff, Link2, History,
 } from 'lucide-react';
 import {
-  parseMedhubCsv,
-  importMedhubCsv,
+  previewMedhubReport,
+  importMedhubReport,
+  getMedhubImportLog,
+  linkMedhubName,
+  ignoreMedhubName,
   syncMedhubApi,
   getMedhubStatus,
-  getResidentsForMatching,
 } from '../api';
+import MedhubQuestionMap from '../components/MedhubQuestionMap';
 
-// Fields we want the user to map from their CSV columns
-const MAPPING_FIELDS = [
-  { key: 'resident_name', label: 'Resident Name', required: true },
-  { key: 'evaluator',     label: 'Evaluator Name', required: false },
-  { key: 'rotation',      label: 'Rotation',        required: false },
-  { key: 'domain',        label: 'Competency Domain', required: false },
-  { key: 'score',         label: 'Score',            required: false },
-  { key: 'comments',      label: 'Comments',         required: false },
-  { key: 'evaluation_date', label: 'Evaluation Date', required: false },
-];
+// SQLite's datetime('now') is UTC without a zone marker.
+function formatTimestamp(sqliteUtc) {
+  if (!sqliteUtc) return 'Never';
+  const d = new Date(`${sqliteUtc.replace(' ', 'T')}Z`);
+  if (isNaN(d)) return sqliteUtc;
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
 
-function formatDate(isoStr) {
-  if (!isoStr) return 'Never';
-  const d = new Date(isoStr);
-  if (isNaN(d)) return isoStr;
-  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return d.toLocaleDateString();
+function formatDay(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function Count({ value, label, tone }) {
+  return (
+    <div className={`import-summary__count${tone ? ` import-summary__count--${tone}` : ''}`}>
+      <span className="import-summary__number">{value}</span>
+      <span className="import-summary__label">{label}</span>
+    </div>
+  );
+}
+
+// The "Not in roster" list: link a name to a resident (saves that resident's
+// MedHub name) or ignore it (remembered for later imports). Nothing is guessed.
+function NotInRoster({ names, roster, onLink, onIgnore, busyName }) {
+  const [choice, setChoice] = useState({});
+  return (
+    <div className="preview-block">
+      <h3 className="preview-block__title">Not in roster</h3>
+      <p className="text-sm text-muted preview-block__desc">
+        These names have no resident with that MedHub name, so their evaluations are left
+        out of this import. Link a name to the right resident, or ignore it — for example
+        a resident who has graduated. Ignored names won&apos;t come up again.
+      </p>
+      <div className="table-scroll">
+        <table className="data-table data-table--wrap">
+          <thead>
+            <tr><th>Name in MedHub</th><th>Rows</th><th>This is…</th><th /></tr>
+          </thead>
+          <tbody>
+            {names.map(({ name, rows }) => (
+              <tr key={name}>
+                <td><strong>{name}</strong></td>
+                <td>{rows}</td>
+                <td>
+                  <div className="flex gap-sm items-center">
+                    <select
+                      className="form-select"
+                      aria-label={`Resident for ${name}`}
+                      value={choice[name] || ''}
+                      onChange={(e) => setChoice((c) => ({ ...c, [name]: e.target.value }))}
+                    >
+                      <option value="">Choose a resident…</option>
+                      {roster.map((r) => (
+                        <option key={r.id} value={r.id} disabled={!!r.medhub_name}>
+                          {r.name} (PGY-{r.pgy_year}{r.status && r.status !== 'active' ? `, ${r.status}` : ''})
+                          {r.medhub_name ? ` — already “${r.medhub_name}”` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn--secondary btn--sm"
+                      disabled={!choice[name] || busyName === name}
+                      onClick={() => onLink(name, choice[name])}
+                    >
+                      <Link2 size={13} /> Link
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    disabled={busyName === name}
+                    onClick={() => onIgnore(name)}
+                  >
+                    <EyeOff size={13} /> Ignore
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Preview({ file, preview, onRefresh, onCancel, onSave, saving, showToast }) {
+  const [busyName, setBusyName] = useState(null);
+  const counts = preview.counts;
+
+  const act = async (name, action, message) => {
+    setBusyName(name);
+    try {
+      await action();
+      showToast(message);
+      await onRefresh();
+    } catch (err) {
+      showToast(err.message || 'Something went wrong');
+    }
+    setBusyName(null);
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+        <div className="text-sm">
+          <strong>{file.name}</strong>
+          {preview.forms.map((f) => (
+            <div key={f.name} className="text-muted">
+              {f.name}{f.date_range ? ` · ${f.date_range}` : ''}
+            </div>
+          ))}
+          {preview.generated && <div className="text-muted">Generated in MedHub {preview.generated}</div>}
+        </div>
+        <button className="btn btn--ghost btn--sm" onClick={onCancel}>
+          <X size={14} /> Choose another file
+        </button>
+      </div>
+
+      <div className="import-summary__counts preview-counts">
+        <Count value={counts.new} label="new rows" tone="success" />
+        <Count value={counts.duplicates} label="already imported" />
+        {counts.changed > 0 && <Count value={counts.changed} label="changed in MedHub" tone="warn" />}
+        {counts.unmatched_rows > 0 && <Count value={counts.unmatched_rows} label="rows not in roster" tone="warn" />}
+        {counts.ignored_name_rows > 0 && <Count value={counts.ignored_name_rows} label="rows for ignored names" />}
+        {counts.ignored_question_rows > 0 && <Count value={counts.ignored_question_rows} label="rows of ignored questions" />}
+        {counts.unmapped_rows > 0 && <Count value={counts.unmapped_rows} label="rows waiting for question mapping" tone="warn" />}
+      </div>
+
+      {preview.unmapped_questions.length > 0 && (
+        <div className="preview-block">
+          <h3 className="preview-block__title">Map these questions</h3>
+          <p className="text-sm text-muted preview-block__desc">
+            AUC hasn&apos;t seen these questions before. Give each a type and a competency area.
+            You can change them later in Settings.
+          </p>
+          <MedhubQuestionMap
+            key={preview.unmapped_questions.map((q) => q.form_name + q.question).join('|')}
+            items={preview.unmapped_questions}
+            competencies={preview.competencies}
+            onSaved={async () => { showToast('Questions mapped'); await onRefresh(); }}
+          />
+        </div>
+      )}
+
+      {preview.not_in_roster.length > 0 && (
+        <NotInRoster
+          names={preview.not_in_roster}
+          roster={preview.roster}
+          busyName={busyName}
+          onLink={(name, residentId) => act(name, () => linkMedhubName(name, residentId), `Linked ${name}`)}
+          onIgnore={(name) => act(name, () => ignoreMedhubName(name), `${name} will be ignored`)}
+        />
+      )}
+
+      {preview.residents.length > 0 && (
+        <div className="preview-block">
+          <h3 className="preview-block__title">Residents in this report</h3>
+          <div className="table-scroll">
+            <table className="data-table data-table--wrap">
+              <thead>
+                <tr>
+                  <th>Resident</th><th>New</th><th>Already imported</th><th>Changed</th>
+                  <th>Blank comments</th><th>N/A comments</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.residents.map((r) => (
+                  <tr key={r.resident_id}>
+                    <td>{r.resident_name} <span className="text-muted">({r.medhub_name})</span></td>
+                    <td>{r.new}</td><td>{r.duplicates}</td><td>{r.changed}</td>
+                    <td>{r.blank}</td><td>{r.na}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {preview.changed.length > 0 && (
+        <div className="preview-block">
+          <h3 className="preview-block__title">Changed in MedHub since the last import</h3>
+          <p className="text-sm text-muted preview-block__desc">Saving replaces the old answer with the new one.</p>
+          <div className="table-scroll">
+            <table className="data-table data-table--wrap">
+              <thead><tr><th>Resident</th><th>Evaluator</th><th>Rotation</th><th>Question</th><th>Was</th><th>Now</th></tr></thead>
+              <tbody>
+                {preview.changed.map((c) => (
+                  <tr key={`${c.medhub_name}|${c.evaluator}|${c.rotation_start}|${c.question}`}>
+                    <td>{c.medhub_name}</td><td>{c.evaluator}</td>
+                    <td>{formatDay(c.rotation_start)} – {formatDay(c.rotation_end)}</td>
+                    <td>{c.question}</td><td>{c.old_answer || '(blank)'}</td><td>{c.new_answer || '(blank)'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {preview.unrecognised_answers.length > 0 && (
+        <div className="alert alert--warning preview-block">
+          <AlertCircle size={14} />
+          <div>
+            <strong>Answers not on the milestone scale.</strong> They are saved, but get no number
+            and stay out of graphs and averages:
+            <ul className="preview-list">
+              {preview.unrecognised_answers.map((u) => (
+                <li key={`${u.form_name}|${u.question}|${u.answer}`}>
+                  “{u.answer}” × {u.count} — {u.question}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {preview.ignored_names_in_file.length > 0 && (
+        <p className="text-sm text-muted preview-block">
+          Ignored names in this file: {preview.ignored_names_in_file.map((n) => `${n.name} (${n.rows})`).join(', ')}.
+          Manage them in Settings.
+        </p>
+      )}
+
+      {!preview.can_save && (
+        <div className="alert alert--warning preview-block">
+          <AlertCircle size={14} /> {preview.blocking_reason}
+        </div>
+      )}
+
+      <div className="modal__actions" style={{ marginTop: '1.25rem', justifyContent: 'flex-end' }}>
+        <button className="btn btn--secondary" onClick={onCancel}>Cancel</button>
+        <button className="btn btn--primary" disabled={!preview.can_save || saving} onClick={onSave}>
+          {saving ? 'Saving…' : `Save import (${plural(counts.new + counts.changed, 'row')})`}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function ImportHistory({ log }) {
+  return (
+    <div className="card">
+      <div className="section__header" style={{ marginBottom: '1rem' }}>
+        <h2 className="section__title" style={{ fontSize: '1rem' }}>
+          <History size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+          Import history
+        </h2>
+      </div>
+      {log.length === 0 ? (
+        <p className="text-sm text-muted">No imports yet.</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="data-table data-table--wrap">
+            <thead>
+              <tr>
+                <th>Imported</th><th>File</th><th>Report</th><th>New rows</th>
+                <th>Duplicates skipped</th><th>Changed</th><th>Names not in roster</th>
+              </tr>
+            </thead>
+            <tbody>
+              {log.map((e) => (
+                <tr key={e.id}>
+                  <td>{formatTimestamp(e.imported_at)}</td>
+                  <td>{e.file_name}</td>
+                  <td>
+                    {e.report_type}
+                    {e.forms.map((f) => (
+                      <div key={f.name} className="text-muted">{f.name}{f.date_range ? ` · ${f.date_range}` : ''}</div>
+                    ))}
+                  </td>
+                  <td>{e.new_rows}</td>
+                  <td>{e.duplicates_skipped}</td>
+                  <td>{e.changed_rows}</td>
+                  <td title={(e.details.not_in_roster || []).map((n) => n.name).join(', ')}>
+                    {e.unmatched_names}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function MedhubImport({ showToast }) {
-  // Status bar state
   const [status, setStatus] = useState(null);
+  const [log, setLog] = useState([]);
 
-  // CSV import state machine: idle | parsing | parsed | importing | unmatched | done
-  const [importStage, setImportStage] = useState('idle');
-  const [csvFile, setCsvFile] = useState(null);
-  const [csvHeaders, setCsvHeaders] = useState([]);
-  const [csvRows, setCsvRows] = useState([]);
-  const [csvPreview, setCsvPreview] = useState([]);
-  const [mapping, setMapping] = useState({});
-  const [importResult, setImportResult] = useState(null);
-  const [unmatched, setUnmatched] = useState([]);
-  const [manualMatches, setManualMatches] = useState({});
-  const [residents, setResidents] = useState([]);
+  // idle | reading | preview | saving | done
+  const [stage, setStage] = useState('idle');
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [readError, setReadError] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [parseError, setParseError] = useState(null);
-
-  // API sync state
   const [isSyncing, setIsSyncing] = useState(false);
-
   const fileInputRef = useRef(null);
 
   const loadStatus = useCallback(async () => {
     try {
-      const s = await getMedhubStatus();
+      const [s, l] = await Promise.all([getMedhubStatus(), getMedhubImportLog()]);
       setStatus(s);
+      setLog(l);
     } catch {
       // silently ignore if backend not running
     }
   }, []);
 
-  useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
 
-  // -------------------------------------------------------------------------
-  // CSV drag-and-drop
-  // -------------------------------------------------------------------------
-
-  const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = () => setIsDragging(false);
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
-  };
-
-  const processFile = async (file) => {
-    setCsvFile(file);
-    setParseError(null);
-    setImportStage('parsing');
+  const readFile = async (chosen) => {
+    setFile(chosen);
+    setReadError(null);
+    setStage('reading');
     try {
-      const result = await parseMedhubCsv(file);
-      setCsvHeaders(result.headers);
-      setCsvPreview(result.preview);
-      // Auto-detect mapping from common MedHub column name patterns
-      const autoMap = {};
-      const h = result.headers;
-      const find = (...terms) => h.find(col =>
-        terms.some(t => col.toLowerCase().includes(t.toLowerCase()))
-      ) || '';
-      autoMap.resident_name   = find('resident', 'trainee', 'student');
-      autoMap.evaluator       = find('evaluator', 'faculty', 'attending', 'rater');
-      autoMap.rotation        = find('rotation', 'service', 'clerkship');
-      autoMap.domain          = find('competency', 'domain', 'milestone');
-      autoMap.score           = find('score', 'rating', 'grade', 'level');
-      autoMap.comments        = find('comment', 'feedback', 'narrative', 'text');
-      autoMap.evaluation_date = find('date', 'eval_date', 'completed');
-      setMapping(autoMap);
-      setImportStage('parsed');
+      setPreview(await previewMedhubReport(chosen));
+      setStage('preview');
     } catch (err) {
-      setParseError(err.message);
-      setImportStage('idle');
+      setReadError(err.message);
+      setStage('idle');
     }
   };
 
-  // -------------------------------------------------------------------------
-  // Import with mapping
-  // -------------------------------------------------------------------------
-
-  const runImport = async (rows, currentMapping, pendingManual = {}) => {
-    setImportStage('importing');
+  const refreshPreview = async () => {
     try {
-      const result = await importMedhubCsv(rows, currentMapping, pendingManual);
-      setImportResult(result);
-      if (result.unmatched?.length > 0 && Object.keys(pendingManual).length === 0) {
-        const res = await getResidentsForMatching();
-        setResidents(res);
-        setUnmatched(result.unmatched);
-        const initMatches = {};
-        result.unmatched.forEach(u => { initMatches[u.csv_name] = ''; });
-        setManualMatches(initMatches);
-        setCsvRows(rows); // save for re-use in finalize
-        setImportStage('unmatched');
-      } else {
-        setImportStage('done');
-        loadStatus();
-      }
+      setPreview(await previewMedhubReport(file));
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
+  const handleSave = async () => {
+    setStage('saving');
+    try {
+      setResult(await importMedhubReport(file));
+      setStage('done');
+      loadStatus();
     } catch (err) {
       showToast(`Import failed: ${err.message}`);
-      setImportStage('parsed');
+      setStage('preview');
+      refreshPreview();
     }
   };
 
-  const handleConfirmMapping = async () => {
-    // Parse all rows from the file client-side, then import
-    setImportStage('importing');
-    try {
-      const rows = await parseCsvFile(csvFile);
-      if (!rows.length) {
-        showToast('CSV appears to have no data rows.');
-        setImportStage('parsed');
-        return;
-      }
-      await runImport(rows, mapping, {});
-    } catch (err) {
-      showToast(`Import failed: ${err.message}`);
-      setImportStage('parsed');
-    }
-  };
-
-  const handleFinalizeUnmatched = () => {
-    const resolved = {};
-    Object.entries(manualMatches).forEach(([name, id]) => {
-      if (id) resolved[name] = id;
-    });
-    runImport(csvRows, mapping, resolved);
-  };
-
-  const resetImport = () => {
-    setImportStage('idle');
-    setCsvFile(null);
-    setCsvHeaders([]);
-    setCsvRows([]);
-    setCsvPreview([]);
-    setMapping({});
-    setImportResult(null);
-    setUnmatched([]);
-    setManualMatches({});
-    setParseError(null);
+  const reset = () => {
+    setStage('idle');
+    setFile(null);
+    setPreview(null);
+    setResult(null);
+    setReadError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // -------------------------------------------------------------------------
-  // API sync
-  // -------------------------------------------------------------------------
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) readFile(dropped);
+  };
 
   const handleApiSync = async () => {
     setIsSyncing(true);
     try {
-      const result = await syncMedhubApi();
-      if (!result.configured) {
-        showToast(result.message);
-      } else {
-        showToast(`Synced: ${result.imported} imported, ${result.skipped_duplicates} duplicates skipped`);
-        loadStatus();
-      }
+      const r = await syncMedhubApi();
+      showToast(r.configured ? `Synced: ${r.imported} imported` : r.message);
+      loadStatus();
     } catch (err) {
       showToast(`Sync failed: ${err.message}`);
-    } finally {
-      setIsSyncing(false);
     }
+    setIsSyncing(false);
   };
-
-  // -------------------------------------------------------------------------
-  // Render helpers
-  // -------------------------------------------------------------------------
-
-  const MappingSelect = ({ fieldKey, label, required }) => (
-    <div className="form-group" style={{ marginBottom: '0.5rem' }}>
-      <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>
-        {label}{required && <span style={{ color: 'var(--red-500)', marginLeft: 2 }}>*</span>}
-      </label>
-      <select
-        className="form-select"
-        value={mapping[fieldKey] || ''}
-        onChange={e => setMapping(m => ({ ...m, [fieldKey]: e.target.value }))}
-      >
-        <option value="">— skip —</option>
-        {csvHeaders.map(h => (
-          <option key={h} value={h}>{h}</option>
-        ))}
-      </select>
-    </div>
-  );
 
   return (
     <div className="page-content">
-      {/* ------------------------------------------------------------------ */}
-      {/* Status bar                                                           */}
-      {/* ------------------------------------------------------------------ */}
       <div className="section__header" style={{ marginBottom: '1.5rem' }}>
         <h1 className="section__title">MedHub Import</h1>
         {status && (
           <div className="flex items-center gap-sm text-sm text-muted">
-            <span>{status.total_evaluations} evaluations in database</span>
+            <span>{plural(status.ratings, 'rating')}</span>
             <span>·</span>
-            <span>Last CSV import: {formatDate(status.last_csv_import)}</span>
+            <span>{plural(status.comments, 'comment')}</span>
             <span>·</span>
-            <span>Last API sync: {formatDate(status.last_api_sync)}</span>
+            <span>Last import: {status.last_import ? formatTimestamp(status.last_import.imported_at) : 'Never'}</span>
           </div>
         )}
       </div>
 
       <div style={{ display: 'grid', gap: '1.5rem' }}>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Section 1 — CSV Import                                            */}
-        {/* ---------------------------------------------------------------- */}
         <div className="card">
           <div className="section__header" style={{ marginBottom: '1rem' }}>
             <h2 className="section__title" style={{ fontSize: '1rem' }}>
               <FileText size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              CSV Import
+              Import an Evaluation Questions Summary
             </h2>
           </div>
 
-          {/* IDLE — drop zone */}
-          {(importStage === 'idle' || importStage === 'parsing') && (
+          {(stage === 'idle' || stage === 'reading') && (
             <>
-              {parseError && (
+              <p className="text-sm text-muted" style={{ marginBottom: '1rem' }}>
+                In MedHub, run the <strong>Evaluation Questions Summary</strong> report for one
+                evaluation form and a date range, then save the page from your browser
+                (File → Save Page As, as a web page). Overlapping date ranges are fine — nothing
+                is imported twice. You will see what the file contains before anything is saved.
+              </p>
+              {readError && (
                 <div className="alert alert--danger" style={{ marginBottom: '1rem' }}>
-                  <AlertCircle size={14} /> {parseError}
+                  <AlertCircle size={14} /> {readError}
                 </div>
               )}
               <div
                 className={`upload-zone${isDragging ? ' upload-zone--active' : ''}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload size={32} style={{ color: 'var(--slate-400)', marginBottom: '0.75rem' }} />
                 <p style={{ fontWeight: 500, marginBottom: '0.25rem' }}>
-                  {importStage === 'parsing' ? 'Reading file…' : 'Drag & drop a CSV file here'}
+                  {stage === 'reading' ? 'Reading report…' : 'Drag & drop the saved report here'}
                 </p>
-                <p className="text-sm text-muted">or click to browse</p>
-                <p className="text-sm text-muted" style={{ marginTop: '0.5rem' }}>
-                  Accepts .csv files exported from MedHub
-                </p>
+                <p className="text-sm text-muted">or click to browse (.html)</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv"
+                accept=".html,.htm"
                 style={{ display: 'none' }}
-                onChange={e => { if (e.target.files?.[0]) processFile(e.target.files[0]); }}
+                onChange={(e) => { if (e.target.files?.[0]) readFile(e.target.files[0]); }}
               />
             </>
           )}
 
-          {/* PARSED — preview + column mapping */}
-          {importStage === 'parsed' && (
-            <>
-              <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
-                <p className="text-sm text-muted">
-                  <strong>{csvFile?.name}</strong> — showing first {csvPreview.length} rows
-                </p>
-                <button className="btn btn--ghost btn--sm" onClick={resetImport}>
-                  <X size={14} /> Change file
-                </button>
-              </div>
-
-              {/* Preview table */}
-              <div className="table-scroll" style={{ marginBottom: '1.5rem' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>{csvHeaders.map(h => <th key={h}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {csvPreview.map((row, i) => (
-                      <tr key={i}>
-                        {csvHeaders.map(h => <td key={h}>{row[h] ?? ''}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Column mapping */}
-              <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-                Map CSV columns to database fields
-              </h3>
-              <div className="mapping-grid">
-                {MAPPING_FIELDS.map(f => (
-                  <MappingSelect key={f.key} fieldKey={f.key} label={f.label} required={f.required} />
-                ))}
-              </div>
-              {!mapping.resident_name && (
-                <p className="text-sm" style={{ color: 'var(--amber-600)', marginTop: '0.5rem' }}>
-                  <AlertCircle size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                  Resident Name column is required before importing.
-                </p>
-              )}
-              <div className="modal__actions" style={{ marginTop: '1.25rem', justifyContent: 'flex-end' }}>
-                <button className="btn btn--secondary" onClick={resetImport}>Cancel</button>
-                <button
-                  className="btn btn--primary"
-                  disabled={!mapping.resident_name}
-                  onClick={handleConfirmMapping}
-                >
-                  Import
-                </button>
-              </div>
-            </>
+          {(stage === 'preview' || stage === 'saving') && preview && (
+            <Preview
+              file={file}
+              preview={preview}
+              saving={stage === 'saving'}
+              onRefresh={refreshPreview}
+              onCancel={reset}
+              onSave={handleSave}
+              showToast={showToast}
+            />
           )}
 
-          {/* IMPORTING — spinner */}
-          {importStage === 'importing' && (
-            <div className="loading-state">
-              <div className="spinner" />
-              <p className="text-muted">Importing evaluations…</p>
-            </div>
-          )}
-
-          {/* UNMATCHED — manual resolution */}
-          {importStage === 'unmatched' && (
-            <>
-              <div className="alert alert--warning" style={{ marginBottom: '1rem' }}>
-                <AlertCircle size={14} />
-                <strong>{unmatched.length} resident name{unmatched.length !== 1 ? 's' : ''} in the CSV
-                could not be automatically matched.</strong> Match them below or skip.
-              </div>
-              <table className="data-table unmatched-table" style={{ marginBottom: '1.25rem' }}>
-                <thead>
-                  <tr>
-                    <th>Name in CSV</th>
-                    <th>Match to resident</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unmatched.map(u => (
-                    <tr key={u.csv_name + u.row_index}>
-                      <td><strong>{u.csv_name || <em className="text-muted">blank</em>}</strong></td>
-                      <td>
-                        <select
-                          className="form-select"
-                          value={manualMatches[u.csv_name] || ''}
-                          onChange={e => setManualMatches(m => ({ ...m, [u.csv_name]: e.target.value }))}
-                        >
-                          <option value="">— skip this row —</option>
-                          {residents.map(r => (
-                            <option key={r.id} value={r.id}>
-                              {r.first_name} {r.last_name} (PGY-{r.pgy_year})
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="modal__actions" style={{ justifyContent: 'flex-end' }}>
-                <button className="btn btn--secondary" onClick={resetImport}>Start over</button>
-                <button className="btn btn--primary" onClick={handleFinalizeUnmatched}>
-                  Finalize import
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* DONE — summary */}
-          {importStage === 'done' && importResult && (
+          {stage === 'done' && result && (
             <div className="import-summary">
               <CheckCircle size={24} className="import-summary__icon" />
-              <h3 className="import-summary__title">Import complete</h3>
+              <h3 className="import-summary__title">Import saved</h3>
               <div className="import-summary__counts">
-                <div className="import-summary__count import-summary__count--success">
-                  <span className="import-summary__number">{importResult.imported}</span>
-                  <span className="import-summary__label">records imported</span>
-                </div>
-                <div className="import-summary__count">
-                  <span className="import-summary__number">{importResult.skipped_duplicates}</span>
-                  <span className="import-summary__label">duplicates skipped</span>
-                </div>
-                {importResult.unmatched?.length > 0 && (
-                  <div className="import-summary__count import-summary__count--warn">
-                    <span className="import-summary__number">{importResult.unmatched.length}</span>
-                    <span className="import-summary__label">rows skipped (unmatched)</span>
-                  </div>
+                <Count value={result.counts.new} label="new rows" tone="success" />
+                <Count value={result.counts.duplicates} label="duplicates skipped" />
+                {result.counts.changed > 0 && <Count value={result.counts.changed} label="updated" />}
+                {result.not_in_roster.length > 0 && (
+                  <Count value={result.not_in_roster.length} label="names not in roster" tone="warn" />
                 )}
               </div>
-              <button className="btn btn--secondary" style={{ marginTop: '1rem' }} onClick={resetImport}>
+              <button className="btn btn--secondary" style={{ marginTop: '1rem' }} onClick={reset}>
                 Import another file
               </button>
             </div>
           )}
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Section 2 — API Sync                                              */}
-        {/* ---------------------------------------------------------------- */}
+        <ImportHistory log={log} />
+
         <div className="card">
           <div className="section__header" style={{ marginBottom: '1rem' }}>
             <h2 className="section__title" style={{ fontSize: '1rem' }}>
@@ -433,7 +494,6 @@ export default function MedhubImport({ showToast }) {
               MedHub API Sync
             </h2>
           </div>
-
           {status?.api_configured === false ? (
             <div className="api-unconfigured">
               <Info size={20} style={{ color: 'var(--slate-400)', flexShrink: 0 }} />
@@ -447,78 +507,14 @@ export default function MedhubImport({ showToast }) {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-sm">
-              <button
-                className="btn btn--primary"
-                onClick={handleApiSync}
-                disabled={isSyncing}
-              >
-                {isSyncing
-                  ? <><div className="spinner spinner--sm" /> Syncing…</>
-                  : <><RefreshCw size={14} /> Sync from MedHub API</>
-                }
-              </button>
-              {status?.last_api_sync && (
-                <span className="text-sm text-muted">
-                  Last synced {formatDate(status.last_api_sync)}
-                </span>
-              )}
-            </div>
+            <button className="btn btn--primary" onClick={handleApiSync} disabled={isSyncing}>
+              {isSyncing
+                ? <><div className="spinner spinner--sm" /> Syncing…</>
+                : <><RefreshCw size={14} /> Sync from MedHub API</>}
+            </button>
           )}
         </div>
-
       </div>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Client-side CSV parsing (for full-file import)
-// ---------------------------------------------------------------------------
-function parseCsvFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try { resolve(parseCsvText(e.target.result)); }
-      catch (err) { reject(err); }
-    };
-    reader.onerror = () => reject(new Error('Could not read file'));
-    reader.readAsText(file);
-  });
-}
-
-function parseCsvText(text) {
-  // RFC 4180-compatible CSV parser (handles quoted fields with commas/newlines)
-  const lines = [];
-  let field = '', row = [], inQuote = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const next = text[i + 1];
-    if (inQuote) {
-      if (ch === '"' && next === '"') { field += '"'; i++; }
-      else if (ch === '"') { inQuote = false; }
-      else { field += ch; }
-    } else {
-      if (ch === '"') { inQuote = true; }
-      else if (ch === ',') { row.push(field); field = ''; }
-      else if (ch === '\n' || (ch === '\r' && next === '\n')) {
-        row.push(field); field = '';
-        if (row.some(Boolean)) lines.push(row);
-        row = [];
-        if (ch === '\r') i++;
-      } else if (ch === '\r') {
-        row.push(field); field = '';
-        if (row.some(Boolean)) lines.push(row);
-        row = [];
-      } else { field += ch; }
-    }
-  }
-  if (field || row.length) { row.push(field); if (row.some(Boolean)) lines.push(row); }
-  if (lines.length < 2) return [];
-  const headers = lines[0].map(h => h.trim().replace(/^\uFEFF/, ''));
-  return lines.slice(1).map(cols => {
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = (cols[i] ?? '').trim(); });
-    return obj;
-  });
 }

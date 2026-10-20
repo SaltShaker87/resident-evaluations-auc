@@ -86,8 +86,9 @@ TARBALL_PATH="$OUTPUT_DIR/$TARBALL_NAME"
 # Single top-level directory auc/ — matches CONTRACT §1 and what the installer downloads.
 #
 # The second group of excludes is about a maintainer's own machine rather than
-# CI: a local .env can hold a MedHub key, and *.csv / *.zip / *.pdf are what
-# resident data looks like when exported. None of it belongs in a public archive.
+# CI: a local .env can hold a MedHub key, and *.csv / *.zip / *.pdf — and MedHub
+# reports saved from the browser, under their report titles — are what resident
+# data looks like when exported. None of it belongs in a public archive.
 tar -czf "$TARBALL_PATH" -C "$REPO_ROOT" \
   --exclude='auc/frontend/node_modules' \
   --exclude='auc/frontend/src' \
@@ -103,6 +104,11 @@ tar -czf "$TARBALL_PATH" -C "$REPO_ROOT" \
   --exclude='auc/.env' \
   --exclude='auc/.env.*' \
   --exclude='*.csv' \
+  --exclude='Evaluation Questions Summary*' \
+  --exclude='Aggregate Comments Report*' \
+  --exclude='Aggregate Evaluation Report*' \
+  --exclude='medhub_report_*' \
+  --exclude='*_files' \
   --exclude='*.zip' \
   --exclude='*.pdf' \
   --exclude='*.bak' \
