@@ -200,6 +200,39 @@ the database:
 The manual route below installs into the folder you cloned instead. Both use
 the same systemd units, so `systemctl --user status auc` works either way.
 
+## Updating AUC
+
+**From the web page (installer installs).** Open **Settings → Updates**. While
+AUC is in use it checks GitHub about once a day by itself, and a blue dot on the
+Settings tab means a newer version is out; **Check for updates** asks straight
+away. The card lists
+what changed in every version since yours. **Update to …** then:
+
+1. downloads the new version from this project's GitHub releases (published
+   releases only — never drafts or pre-releases, never a lower version);
+2. checks it against two fingerprints, the `.sha256` file published with it
+   and the one GitHub recorded when it was uploaded, and refuses it if either
+   is missing or wrong, or if the archive holds anything but ordinary files;
+3. sets it up in its own folder, `app/<new version>/`, with its own Python
+   environment, while the current version keeps running;
+4. pauses AUC for about a minute, backs up the database and photos to the
+   backups folder as `auc-pre-update-<from>-to-<to>-<date>.zip` (the newest
+   five are kept), points `app/current` at the new folder and starts it;
+5. if the new version does not answer within two minutes, points
+   `app/current` back, puts the database back from that backup and starts the
+   old version again.
+
+The data folder and `auc.env` are never touched, the previous version's folder
+is kept, and every attempt writes a log to `~/.local/share/auc/logs/`. Only
+someone logged in can start an update. Two kinds of update still need the
+installer (`auc-installer --headless update`, or its Update button): one that
+changes how the NVIDIA Nemotron containers start, because that may need your
+NVIDIA key, and the update *to* the first version that has this card.
+
+**Manual installs (a git clone):** `git pull`, then `bash auc/setup.sh`. The
+Settings card can still check for releases, but this kind of copy does not
+update itself.
+
 ## File Structure
 
 ```

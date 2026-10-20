@@ -24,6 +24,7 @@ import pdf_export
 import rag_retrieval
 import retrieval_engine
 import summary_builder
+import update_api
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -317,6 +318,7 @@ retrieval_engine.init_retrieval_engine(db_connection)
 medhub_import.init_medhub_import(db_connection, ACGME_DOMAINS)
 app.include_router(auth.router)
 app.include_router(ccc.router)
+app.include_router(update_api.router)
 app.include_router(medhub_import.router)
 
 

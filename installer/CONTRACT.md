@@ -409,3 +409,52 @@ stay on stdin and in the process environment.
 Steps are batched so one phase asks for the password once: the engine writes
 the phase's commands to a temporary script, logs the script's contents, runs
 it once under `pkexec`, then deletes it.
+
+---
+
+## 7. The app's own updater
+
+AUC can also update itself from **Settings → Updates**
+(`auc/backend/updater.py`, served by `auc/backend/update_api.py`). It is a
+second implementation of the **update** action above, written against this
+document, so the two must agree on everything in §1. If §1 or the update steps
+change, change `updater.py` too.
+
+It works only on a layout this installer made, which it recognises from inside:
+the running code is `app/<version>/` with a `VERSION` file, `app/current` is a
+link resolving to that folder, `tools/uv` exists, and the app runs as a systemd
+service (`INVOCATION_ID` is set and `systemd-run` is on `PATH`). Anything else
+is told why it cannot update itself and what to use instead.
+
+The button starts `updater.py run --to <version>` as a transient unit,
+`systemd-run --user --unit=auc-update.service --collect`, using the running
+version's own `backend/venv` Python. It has to run outside `auc.service`,
+because stopping that unit kills everything in it. It is given the service's
+`AUC_*`, `OLLAMA_*` and proxy variables by name only (`--setenv=NAME`), so no
+value appears on a command line. Being one fixed unit name means only one
+update can run at a time.
+
+Steps, in order. Nothing stops AUC until the first five are done:
+
+| id | label | what it does, and how it differs from the installer's update |
+|---|---|---|
+| `download` | Downloading the new version | `releases/latest` only. Tag must be `vX.Y.Z` and newer than `VERSION`. Both asset links must start with `https://github.com/<repo>/releases/download/<tag>/`. Download capped at 200 MB, needs 2 GB free |
+| `verify` | Checking the download is genuine and intact | must match the `.sha256` asset **and** the asset's `digest` from the API when present. A release without a `.sha256` is refused (the installer only warns) |
+| `prepare` | Setting up the new version | every tar entry must be a plain file or folder under `auc/`, checked first and then extracted with Python's `data` filter. `REQUIRED_FILES` must be present and `VERSION` must match. Unpacked to `app/.staging-<v>/`, renamed to `app/<v>/`, then `uv python install 3.12`, `uv venv --clear`, `requirements.txt`, `requirements-rag.txt`. If the RAG layer fails while the running version has `chromadb`, the update is cancelled (the installer only warns). If `nim/docker-compose.yml` changed and `choices.nemotron_enabled` is true (or the state is unreadable), the update is refused with a pointer to the installer |
+| `index` | Preparing the ACGME reference index | copies `app/<old>/rag/chroma_db` across. If `rag/documents`, `rag/ontology`, `rag/build_index.py` or `backend/rag_retrieval.py` differ, runs the new version's `build_index.py`. A failed rebuild cancels the update if the old version had an index |
+| `backup` | Pausing AUC and backing up your database and photos | `systemctl --user stop auc.service`, then `backup.make_backup_zip` to `$AUC_BACKUP_DIR` (or `backups/`) as `auc-pre-update-<from>-to-<to>-<stamp>.zip`. The newest 5 are kept, and the nightly `auc-backup-*` files are left alone |
+| `switch` | Starting the new version | atomic swap of `app/current` (temporary link + rename, as `point_current_at`), `systemctl --user restart auc.service`, then wait up to 120 s for `/api/version` to report the new version |
+
+On a failure before `switch` the half-made `app/<v>/` is deleted and the old
+version is started again if it had been stopped. On a failure in `switch` the
+updater stops the service and points `app/current` back. It then removes
+`data/auc.db-wal` and `-shm`, restores `data/auc.db` from the pre-update backup
+(nothing else ran in between, so nothing is lost) and starts the old version.
+On success it sets `version` in `installer-state.json` (all other fields kept)
+and keeps `app/<old>/`, removing older version folders as `keep_only_previous`
+does. It never writes to `auc.env`.
+
+Files it writes, all under `logs/`: `update-status.json`, which the page polls
+and which outlives the restart, and `update-<stamp>.log` (the newest 10 are
+kept). A status still marked `running` whose unit is no longer active is
+reported as `interrupted`.
