@@ -232,6 +232,16 @@ async function downloadFile(path, fallbackName) {
 // Data management
 export const downloadBackup = () => downloadFile('/backup', 'auc-backup.zip');
 
+// Updates (Settings → Updates). The server keeps its answer for a day, so the
+// app can ask on every load; refresh=true asks GitHub now.
+export const getUpdateCheck = (refresh = false) =>
+  request(`/update/check${refresh ? '?refresh=true' : ''}`);
+
+export const startUpdate = (version) =>
+  request('/update/start', { method: 'POST', body: JSON.stringify({ version }) });
+
+export const getUpdateStatus = () => request('/update/status');
+
 // Export an approved summary as a PDF
 export const exportSummaryPdf = (residentId, summaryId) =>
   downloadFile(`/residents/${residentId}/summaries/${summaryId}/pdf`, 'summary.pdf');

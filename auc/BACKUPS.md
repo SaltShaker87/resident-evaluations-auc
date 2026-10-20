@@ -38,6 +38,7 @@ app is in use.
 |---|---|
 | `auc-backup-2026-09-12_020000.zip` | the timer — date **underscore** time |
 | `auc-backup-2026-09-12.zip` | Settings → Download Full Backup — date only |
+| `auc-pre-update-1.0.4-to-1.1.0-2026-10-20_141500.zip` | Settings → Updates, taken just before switching versions. The newest five are kept, and the 14-day clean-up leaves them alone |
 
 Worth knowing, because verifying an archive you downloaded yourself proves the
 archive is sound but says nothing about whether the automation is working.

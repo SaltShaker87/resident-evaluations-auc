@@ -3,6 +3,7 @@ import { Sun, Moon, GraduationCap, RotateCcw, AlertTriangle, Download, Check } f
 import { getOllamaModels, getRagStatus, setRetrievalEngine, getActiveSnapshot, restoreSnapshot, dismissSnapshot, downloadBackup } from '../api';
 import AdvancementWizard from '../components/AdvancementWizard';
 import AdvisorsCard from '../components/AdvisorsCard';
+import UpdatesCard from '../components/UpdatesCard';
 
 // Index health, as one word in the tag. The sentence explaining it — and what
 // to do about it — comes from the server, so there is one wording to maintain.
@@ -27,7 +28,7 @@ function formatSnapshotDate(dateStr) {
   });
 }
 
-export default function Settings({ theme, setTheme }) {
+export default function Settings({ theme, setTheme, onUpdateCheck }) {
   const isDark = theme === 'dark';
 
   const [models, setModels] = useState([]);
@@ -367,6 +368,8 @@ export default function Settings({ theme, setTheme }) {
           </div>
         </div>
       </div>
+
+      <UpdatesCard onCheck={onUpdateCheck} />
 
       {showWizard && (
         <AdvancementWizard

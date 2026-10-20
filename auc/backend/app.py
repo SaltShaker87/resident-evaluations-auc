@@ -25,6 +25,7 @@ import pdf_export
 import rag_retrieval
 import retrieval_engine
 import summary_builder
+import update_api
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -308,6 +309,7 @@ ccc.init_ccc(db_connection)
 retrieval_engine.init_retrieval_engine(db_connection)
 app.include_router(auth.router)
 app.include_router(ccc.router)
+app.include_router(update_api.router)
 
 
 # The routes that answer without a session. /api/auth/* must, or nobody could

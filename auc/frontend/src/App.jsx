@@ -12,7 +12,7 @@ import { CccProvider } from './ccc/CccContext';
 import CccBanner from './ccc/CccBanner';
 import CccStartButton from './ccc/CccStartButton';
 import CccDrawerHost from './ccc/CccDrawerHost';
-import { getAuthStatus, logout } from './api';
+import { getAuthStatus, getUpdateCheck, logout } from './api';
 import aucMark from './assets/auc-mark.png';
 
 function ToastContainer({ toasts }) {
@@ -57,6 +57,20 @@ export default function App() {
     window.addEventListener('auc:unauthenticated', onUnauthenticated);
     return () => window.removeEventListener('auc:unauthenticated', onUnauthenticated);
   }, []);
+
+  // A dot on Settings when a newer release is out. The server asks GitHub at
+  // most once a day, so asking it on every load is free.
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    if (!auth.authenticated) return;
+    getUpdateCheck()
+      .then((result) => setUpdateAvailable(Boolean(result?.available)))
+      .catch(() => {});
+  }, [auth.authenticated]);
+  const handleUpdateCheck = useCallback(
+    (result) => setUpdateAvailable(Boolean(result?.available)),
+    [],
+  );
 
   const handleLogout = async () => {
     try {
@@ -117,6 +131,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>
             <SettingsIcon size={16} /> Settings
+            {updateAvailable && (
+              <span className="nav-dot" title="An update is available" aria-label="An update is available" />
+            )}
           </NavLink>
           <CccStartButton />
           <button className="app-header__logout" onClick={handleLogout} title="Log out">
@@ -131,7 +148,7 @@ export default function App() {
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
           <Route path="/study" element={<StudyData showToast={showToast} />} />
-          <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} />} />
+          <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} onUpdateCheck={handleUpdateCheck} />} />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />
