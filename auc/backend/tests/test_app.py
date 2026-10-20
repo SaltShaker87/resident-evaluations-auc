@@ -106,3 +106,28 @@ def test_the_path_traversal_hole_stays_closed(logged_in):
     """SECURITY.md records this one: /../data/auc.db once served the database."""
     response = logged_in.get("/../data/auc.db")
     assert b"SQLite format" not in response.content
+
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+JPG_BYTES = b"\xff\xd8\xff" + b"\x00" * 32
+
+
+def test_a_new_photo_replaces_the_old_one_and_can_be_removed(logged_in, app_module):
+    rid = logged_in.post("/api/residents", json={
+        "first_name": "Ryan", "last_name": "Chen", "pgy_year": 1,
+    }).json()["id"]
+    photos = app_module.PHOTOS_DIR
+
+    first = logged_in.post(f"/api/residents/{rid}/photo",
+                           files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["filename"]
+    second = logged_in.post(f"/api/residents/{rid}/photo",
+                            files={"file": ("b.jpg", JPG_BYTES, "image/jpeg")}).json()["filename"]
+
+    # A new URL each time so the browser can't show a cached old photo
+    assert first != second
+    assert sorted(p.name for p in photos.iterdir()) == [second]
+    assert logged_in.get(f"/api/residents/{rid}").json()["photo_filename"] == second
+
+    assert logged_in.delete(f"/api/residents/{rid}/photo").status_code == 200
+    assert list(photos.iterdir()) == []
+    assert logged_in.get(f"/api/residents/{rid}").json()["photo_filename"] is None
