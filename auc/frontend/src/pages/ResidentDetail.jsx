@@ -9,9 +9,10 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
-  exportSummaryPdf, getAdvisors,
+  exportSummaryPdf, getAdvisors, getResidentMedhub,
 } from '../api';
 import Avatar from '../components/Avatar';
+import MedhubEvaluations from '../components/MedhubEvaluations';
 import SummaryReport from '../components/SummaryReport';
 
 const DOMAINS = [
@@ -363,7 +364,7 @@ function parseSseFrame(frame) {
   }
 }
 
-function SummarySection({ residentId, summaries, noteCount, onChanged, showToast }) {
+function SummarySection({ residentId, summaries, evidenceCount, onChanged, showToast }) {
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState(null);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
@@ -502,7 +503,7 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
           <button
             className="btn btn--primary btn--sm"
             onClick={handleGenerate}
-            disabled={generating || noteCount === 0 || !!ollamaError}
+            disabled={generating || evidenceCount === 0 || !!ollamaError}
           >
             {generating ? (
               <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</>
@@ -519,9 +520,9 @@ function SummarySection({ residentId, summaries, noteCount, onChanged, showToast
         </div>
       )}
 
-      {noteCount === 0 && !ollamaError && (
+      {evidenceCount === 0 && !ollamaError && (
         <div className="text-sm text-muted" style={{ padding: '0.5rem 0' }}>
-          Add some notes first before generating a summary.
+          Add a note or import MedHub comments before generating a summary.
         </div>
       )}
 
@@ -615,19 +616,28 @@ function EditResidentModal({ resident, onClose, onSaved }) {
   const [track, setTrack] = useState(resident.track ?? 'none');
   const [isPrelim, setIsPrelim] = useState(!!resident.is_prelim);
   const [prelimSpecialty, setPrelimSpecialty] = useState(resident.prelim_specialty ?? '');
+  const [medhubName, setMedhubName] = useState(resident.medhub_name ?? '');
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await updateResident(resident.id, {
-      first_name: firstName,
-      last_name: lastName,
-      pgy_year: pgyYear,
-      medical_school: medicalSchool.trim() || null,
-      interests: interests.trim() || null,
-      track,
-      is_prelim: isPrelim,
-      prelim_specialty: isPrelim ? (prelimSpecialty.trim() || null) : null,
-    });
+    setError('');
+    try {
+      await updateResident(resident.id, {
+        first_name: firstName,
+        last_name: lastName,
+        pgy_year: pgyYear,
+        medical_school: medicalSchool.trim() || null,
+        interests: interests.trim() || null,
+        track,
+        is_prelim: isPrelim,
+        prelim_specialty: isPrelim ? (prelimSpecialty.trim() || null) : null,
+        medhub_name: medhubName.trim() || null,
+      });
+    } catch (err) {
+      setError(err.message || 'Could not save the changes.');
+      return;
+    }
     onSaved();
   };
 
@@ -683,6 +693,14 @@ function EditResidentModal({ resident, onClose, onSaved }) {
               <input className="form-input" value={prelimSpecialty} onChange={(e) => setPrelimSpecialty(e.target.value)} placeholder="e.g. Dermatology, Ophthalmology" />
             </div>
           )}
+          <div className="form-group">
+            <label>MedHub name</label>
+            <input className="form-input" value={medhubName} onChange={(e) => setMedhubName(e.target.value)} placeholder="Last, First — e.g. Abiddin, Zain Ul" />
+            <div className="text-sm text-muted" style={{ marginTop: '0.25rem' }}>
+              Exactly as MedHub reports show it. Imports match on this whole name; a leading &ldquo;Dr.&rdquo; is ignored.
+            </div>
+          </div>
+          {error && <div className="alert alert--danger" style={{ marginBottom: '0.75rem' }}><AlertCircle size={14} /> {error}</div>}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn--primary">Save Changes</button>
@@ -705,23 +723,26 @@ export default function ResidentDetail({ showToast }) {
   const [followups, setFollowups] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [advisors, setAdvisors] = useState([]);
+  const [medhub, setMedhub] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
-      const [r, n, f, s, a] = await Promise.all([
+      const [r, n, f, s, a, m] = await Promise.all([
         getResident(id),
         getNotes(id),
         getResidentFollowups(id, true),
         getSummaries(id),
         getAdvisors(),
+        getResidentMedhub(id),
       ]);
       setResident(r);
       setNotes(n);
       setFollowups(f);
       setSummaries(s);
       setAdvisors(a);
+      setMedhub(m);
     } catch {
       showToast('Failed to load resident data');
     }
@@ -826,6 +847,10 @@ export default function ResidentDetail({ showToast }) {
               <span className="profile-field__value">{resident.interests || 'None'}</span>
             </div>
             <div className="profile-field">
+              <span className="profile-field__label">MedHub name</span>
+              <span className="profile-field__value">{resident.medhub_name || 'Not set'}</span>
+            </div>
+            <div className="profile-field">
               <span className="profile-field__label">Advisor</span>
               <select
                 className="form-select"
@@ -864,10 +889,12 @@ export default function ResidentDetail({ showToast }) {
 
       <NotesTimeline notes={notes} onChanged={loadAll} />
 
+      <MedhubEvaluations data={medhub} medhubName={resident.medhub_name} />
+
       <SummarySection
         residentId={id}
         summaries={summaries}
-        noteCount={notes.length}
+        evidenceCount={notes.length + (medhub?.comments.length ?? 0)}
         onChanged={loadAll}
         showToast={showToast}
       />

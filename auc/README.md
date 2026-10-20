@@ -11,6 +11,7 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Grounded in the ACGME milestones** — each note is matched to the sub-competencies it is about, by keyword or by searching the ACGME reference material with the retrieval engine chosen in Settings: NVIDIA Nemotron by default on a DGX Spark, Standard (Ollama) elsewhere (see "The retrieval engine" below)
 - **Evidence-checked** — every quote the AI produces is verified word-for-word against the actual notes before you see it; a section whose quotes don't check out is withheld rather than shown (see "How AI Summaries Work" below)
 - **Edit and approve** — review each section, adjust the narrative or level, and save the final version
+- **Import MedHub evaluations** — load MedHub's Evaluation Questions Summary report (saved as a web page); milestone ratings become graphs on each resident's page and comments feed the AI summaries, with nothing ever imported twice (see "Importing From MedHub" below)
 - **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
 - **Capture CCC meetings for study** — start a meeting and a slide-over drawer records what the room recalled unprompted, what you had to surface, and what it changed, with de-identified CSV exports (see "CCC Meeting Capture" below)
 - **Password protected** — a single shared password guards all resident data (see "Logging In" below)
@@ -312,6 +313,35 @@ Keep the capture file; it holds the other half.
 
 A handful of questions it cannot answer are left as blanks for you.
 
+## Importing From MedHub
+
+AUC reads one MedHub report: the **Evaluation Questions Summary**. Run it in MedHub for one
+evaluation form and a date range, then save the page from your browser as a web page
+(`.html`) and drop it on the **MedHub Import** page. Nothing is saved until you have seen a
+preview and pressed **Save import**.
+
+- **Residents are matched only on their MedHub name** — set it on each resident's Edit form,
+  exactly as MedHub shows it ("Last, First", e.g. `Abiddin, Zain Ul`). A leading "Dr." is
+  ignored; the rest of the name must match in full. AUC never guesses and never creates a
+  resident. A name it can't match is listed under **Not in roster**, where you can link it to
+  a resident or **Ignore** it (for someone who has graduated); ignored names are remembered
+  and managed in Settings.
+- **Every question is mapped once.** The first time a form's question appears, the preview
+  asks for its type — milestone rating, comment, or ignore — and its ACGME competency area.
+  The mapping is editable later in **Settings → MedHub question mapping**.
+- **Answers become numbers**: Conditional on improvement = 1, Intern = 2, Junior Resident = 3,
+  Senior Resident = 4, Aspirational = 5. "Unable to Assess" is kept but has no number, and is
+  left out of graphs and averages. Graphs use the rotation's end date.
+- **No duplicates.** Each row is fingerprinted by resident, evaluator, form, rotation dates and
+  question, so importing overlapping date ranges adds only what is new. If MedHub's answer has
+  changed since the last import, the preview shows the old and new answer and saving keeps the
+  new one.
+- **Comments** with text appear on the resident's page and in AI summaries. Blank comments and
+  ones marked "N/A" are counted per resident but never sent to the AI. Scores are not sent to
+  the AI either.
+- **Every import is logged** — file, report, date, new rows, duplicates skipped, and names not
+  in the roster — under **Import history** on the MedHub Import page.
+
 ## CCC Meeting Capture
 
 For measuring what a committee's spontaneous recall misses. Press **Start CCC** in the
@@ -382,6 +412,8 @@ auc/
 │   ├── auth.py       ← password & login handling
 │   ├── ccc.py        ← CCC meeting capture: schema + /api/ccc endpoints
 │   ├── ccc_export.py ← CCC study exports (de-identified CSV/JSON)
+│   ├── medhub_reports.py ← reads MedHub's Evaluation Questions Summary (HTML)
+│   ├── medhub_import.py  ← MedHub import: preview, save, question map, ignored names, log
 │   ├── summary_builder.py ← AI summaries: one call per sub-competency + quote checking
 │   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies, with either engine
 │   ├── retrieval_engine.py ← which engine is in force, and can this machine run it

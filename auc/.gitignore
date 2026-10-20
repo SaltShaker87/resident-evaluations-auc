@@ -18,9 +18,15 @@ data/
 *.db-shm
 *.db-journal
 
-# MedHub CSV exports (real evaluator comments and scores), backup archives
-# from backup.py (database + photos), and exported summary PDFs.
+# MedHub exports (real evaluator comments and scores) — CSVs, and reports saved
+# from the browser as web pages — backup archives from backup.py (database +
+# photos), and exported summary PDFs.
 *.csv
+Evaluation Questions Summary*
+Aggregate Comments Report*
+Aggregate Evaluation Report*
+medhub_report_*
+*_files/
 *.zip
 *.pdf
 
