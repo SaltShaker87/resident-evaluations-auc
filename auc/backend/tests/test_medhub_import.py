@@ -402,9 +402,90 @@ def test_a_name_linked_in_the_preview_is_remembered_and_imported(logged_in, app_
     _ok(_send(logged_in, "import", "eqs_inpatient_jul_sep.html"))
     assert len(_stored(app_module, erik)) == 7
 
-    # A resident who already has a different MedHub name is not silently re-pointed.
-    clash = logged_in.post("/api/medhub/link-name", json={"name": "Haddad, Noor", "resident_id": erik})
-    assert clash.status_code == 409
+
+def test_another_spelling_links_to_a_resident_who_already_has_a_name(logged_in, app_module):
+    ids = _roster(logged_in)
+    _map(logged_in, INPATIENT, INPATIENT_MAP)
+
+    # "Haddad, Noor" is a typo for Noor Ul Ain here: it is added as an alias,
+    # and her main MedHub name is kept.
+    linked = _ok(logged_in.post("/api/medhub/link-name", json={
+        "name": "Dr. Haddad,  Noor", "resident_id": ids["haddad"],
+    }))
+    assert linked == {"alias": "Haddad, Noor"}
+    haddad = logged_in.get(f"/api/residents/{ids['haddad']}").json()
+    assert haddad["medhub_name"] == "Haddad, Noor Ul Ain"
+    assert haddad["medhub_aliases"] == ["Haddad, Noor"]
+
+    preview = _ok(_send(logged_in, "preview", "eqs_inpatient_jul_sep.html"))
+    assert [n["name"] for n in preview["not_in_roster"]] == ["Lindqvist, Erik"]
+    by_id = {r["resident_id"]: r for r in preview["residents"]}
+    assert by_id[ids["haddad"]]["medhub_names"] == ["Haddad, Noor Ul Ain", "Haddad, Noor"]
+    _ok(_send(logged_in, "import", "eqs_inpatient_jul_sep.html"))
+    assert len(_stored(app_module, ids["haddad"])) == 21
+
+    # The alias belongs to her: no one else can take it, as a name or an alias,
+    # and it cannot be ignored.
+    erik = _resident(logged_in, "Erik", "Lindqvist", "Lindqvist, Erik")
+    assert logged_in.post("/api/medhub/link-name", json={
+        "name": "haddad, noor", "resident_id": erik,
+    }).status_code == 409
+    assert logged_in.put(f"/api/residents/{ids['okafor']}", json={
+        "medhub_name": "Haddad, Noor",
+    }).status_code == 409
+    assert logged_in.post("/api/medhub/ignored-names", json={"name": "Haddad, Noor"}).status_code == 409
+
+    # Linking her own main name again changes nothing.
+    assert _ok(logged_in.post("/api/medhub/link-name", json={
+        "name": "Haddad, Noor Ul Ain", "resident_id": ids["haddad"],
+    })) == {"alias": "Haddad, Noor Ul Ain"}
+    assert logged_in.get(f"/api/residents/{ids['haddad']}").json()["medhub_aliases"] == ["Haddad, Noor"]
+
+    # Removing the alias keeps what was imported; the spelling is unmatched again.
+    assert logged_in.delete("/api/medhub/aliases", params={"name": "HADDAD, NOOR"}).status_code == 200
+    assert logged_in.get(f"/api/residents/{ids['haddad']}").json()["medhub_aliases"] == []
+    assert len(_stored(app_module, ids["haddad"])) == 21
+    again = _ok(_send(logged_in, "preview", "eqs_inpatient_jul_sep.html"))
+    assert [n["name"] for n in again["not_in_roster"]] == ["Haddad, Noor"]
+
+
+def test_an_alias_can_be_promoted_to_the_main_name(logged_in):
+    ids = _roster(logged_in)
+    _ok(logged_in.post("/api/medhub/link-name", json={"name": "Okafor, Chid", "resident_id": ids["okafor"]}))
+    _ok(logged_in.put(f"/api/residents/{ids['okafor']}", json={"medhub_name": "Okafor, Chid"}))
+    okafor = logged_in.get(f"/api/residents/{ids['okafor']}").json()
+    assert (okafor["medhub_name"], okafor["medhub_aliases"]) == ("Okafor, Chid", [])
+
+
+def test_deleting_a_resident_removes_their_aliases(logged_in, app_module):
+    ids = _roster(logged_in)
+    _ok(logged_in.post("/api/medhub/link-name", json={"name": "Haddad, Noor", "resident_id": ids["haddad"]}))
+    assert logged_in.delete(f"/api/residents/{ids['haddad']}").status_code == 200
+    with app_module.db_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM medhub_name_aliases").fetchone()[0] == 0
+
+
+def test_likely_residents_are_suggested_for_an_unmatched_name(logged_in):
+    ids = _roster(logged_in)
+    # Stored with a middle name in the last-name field, as happens in real rosters.
+    erik = _resident(logged_in, "Erik", "Johan Lindqvist")
+    _resident(logged_in, "Maria", "Lopez")
+    _map(logged_in, INPATIENT, INPATIENT_MAP)
+
+    preview = _ok(_send(logged_in, "preview", "eqs_inpatient_jul_sep.html"))
+    suggestions = {n["name"]: n["suggestions"] for n in preview["not_in_roster"]}
+    assert suggestions["Lindqvist, Erik"] == [erik]
+    assert suggestions["Haddad, Noor"][0] == ids["haddad"]
+    # A suggestion is only a suggestion: nothing was linked.
+    assert logged_in.get(f"/api/residents/{erik}").json()["medhub_name"] is None
+
+
+def test_similarity_tolerates_typos_and_word_order():
+    import medhub_import as mi
+    assert mi._similarity("Bradbury, Sarah", "Mae Bradbury, Sarah") >= 0.75
+    assert mi._similarity("Bradbery, Sara", "Bradbury, Sarah") >= 0.75
+    assert mi._similarity("Brown, Douglas", "Bradbury, Sarah") < 0.75
+    assert mi._similarity("Amin, Priya", "Arik, Zeynep") < 0.75
 
 
 def test_ignored_names_are_skipped_and_stay_ignored(logged_in, app_module):

@@ -9,7 +9,7 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
-  exportSummaryPdf, getAdvisors, getResidentMedhub,
+  exportSummaryPdf, getAdvisors, getResidentMedhub, removeMedhubAlias,
 } from '../api';
 import Avatar from '../components/Avatar';
 import MedhubEvaluations from '../components/MedhubEvaluations';
@@ -788,6 +788,17 @@ export default function ResidentDetail({ showToast }) {
     }
   };
 
+  const handleAliasRemove = async (alias) => {
+    if (!window.confirm(`Stop matching “${alias}” to ${resident.first_name}? Evaluations already imported stay.`)) return;
+    try {
+      await removeMedhubAlias(alias);
+      showToast('Spelling removed');
+      loadAll();
+    } catch (err) {
+      showToast(err.message || 'Failed to remove spelling');
+    }
+  };
+
   const handleDelete = async () => {
     if (window.confirm(`Remove Dr. ${resident.first_name} ${resident.last_name} and all their data? This cannot be undone.`)) {
       await deleteResident(id);
@@ -880,6 +891,24 @@ export default function ResidentDetail({ showToast }) {
             <div className="profile-field">
               <span className="profile-field__label">MedHub name</span>
               <span className="profile-field__value">{resident.medhub_name || 'Not set'}</span>
+              {resident.medhub_aliases?.length > 0 && (
+                <span className="text-sm text-muted">
+                  Also matched:{' '}
+                  {resident.medhub_aliases.map((alias) => (
+                    <span key={alias} className="medhub-alias">
+                      {alias}
+                      <button
+                        className="medhub-alias__remove"
+                        title={`Stop matching “${alias}”`}
+                        aria-label={`Remove spelling ${alias}`}
+                        onClick={() => handleAliasRemove(alias)}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </span>
+              )}
             </div>
             <div className="profile-field">
               <span className="profile-field__label">Advisor</span>
