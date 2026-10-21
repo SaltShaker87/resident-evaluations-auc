@@ -12,11 +12,14 @@ Design notes that are load-bearing:
   name linked or ignored, or a question mapped, between the two steps is what
   the import uses — there is no half-finished import held on the server.
 
-- **Residents are matched only on their MedHub name**, compared as one whole
-  string (medhub_reports.name_key). No first/last-name fallback, no partial
-  match, and residents are never created. A name with no match is either
-  linked by the user to a resident, ignored (remembered in
-  medhub_ignored_names), or left out of this import and counted.
+- **Residents are matched only on their MedHub names**, each compared as one
+  whole string (medhub_reports.name_key): the resident's MedHub name plus any
+  other spellings linked to them (medhub_name_aliases), since reports carry
+  typos. No first/last-name fallback, no partial match, and residents are
+  never created. A name with no match is either linked by the user to a
+  resident, ignored (remembered in medhub_ignored_names), or left out of this
+  import and counted. The preview suggests likely residents for a name, but
+  only the user's link makes it a match.
 
 - **Every row has a fingerprint** (medhub_reports.fingerprint): resident +
   evaluator + form + rotation dates + question. Importing overlapping date
@@ -36,8 +39,10 @@ Design notes that are load-bearing:
 
 import hashlib
 import json
+import re
 import uuid
 from collections import Counter, OrderedDict
+from difflib import SequenceMatcher
 from typing import List, Literal, Optional
 
 import medhub_api
@@ -113,6 +118,17 @@ SCHEMA_SQL = """
         ignored_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Other spellings of a resident's MedHub name, e.g. a typo in one report.
+    -- A name key is unique here and never also a residents.medhub_name_key.
+    CREATE TABLE IF NOT EXISTS medhub_name_aliases (
+        name_key TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        resident_id TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_medhub_name_aliases_resident ON medhub_name_aliases(resident_id);
+
     CREATE TABLE IF NOT EXISTS medhub_answers (
         id TEXT PRIMARY KEY,
         fingerprint TEXT NOT NULL UNIQUE,
@@ -162,22 +178,36 @@ def classify(answer: str, question_type: str):
     return medhub_reports.comment_kind(answer), None
 
 
+def name_owner(conn, key: str):
+    """The resident whose MedHub name or alias this name key is, or None."""
+    return conn.execute(
+        """SELECT id, first_name, last_name FROM residents WHERE medhub_name_key = ?
+           UNION ALL
+           SELECT r.id, r.first_name, r.last_name FROM medhub_name_aliases a
+           JOIN residents r ON r.id = a.resident_id WHERE a.name_key = ?""",
+        (key, key),
+    ).fetchone()
+
+
+def _refuse_if_taken(conn, key: str, display: str, resident_id: str):
+    owner = name_owner(conn, key)
+    if owner and owner["id"] != resident_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f'"{display}" is already {owner["first_name"]} {owner["last_name"]}\'s MedHub name.',
+        )
+
+
 def set_resident_medhub_name(conn, resident_id: str, name: Optional[str]) -> Optional[str]:
     """Set or clear a resident's MedHub name. Raises 409 if another resident
-    already has it. Returns the stored display form. Used by the resident edit
-    form and by linking a name in the import preview."""
+    already has it, as a name or an alias. Returns the stored display form.
+    Used by the resident edit form and by linking a name in the import preview."""
     display = medhub_reports.display_name(name or "")
     key = display.casefold() or None
     if key:
-        clash = conn.execute(
-            "SELECT first_name, last_name FROM residents WHERE medhub_name_key = ? AND id != ?",
-            (key, resident_id),
-        ).fetchone()
-        if clash:
-            raise HTTPException(
-                status_code=409,
-                detail=f'{clash["first_name"]} {clash["last_name"]} already has the MedHub name "{display}".',
-            )
+        _refuse_if_taken(conn, key, display, resident_id)
+        # Promoting one of their own aliases: it is the main name now.
+        conn.execute("DELETE FROM medhub_name_aliases WHERE name_key = ?", (key,))
     conn.execute(
         "UPDATE residents SET medhub_name = ?, medhub_name_key = ?, updated_at = datetime('now') "
         "WHERE id = ?",
@@ -187,6 +217,59 @@ def set_resident_medhub_name(conn, resident_id: str, name: Optional[str]) -> Opt
         # A name that now belongs to a resident is no longer one to ignore.
         conn.execute("DELETE FROM medhub_ignored_names WHERE name_key = ?", (key,))
     return display or None
+
+
+def add_resident_alias(conn, resident_id: str, name: str) -> str:
+    """Add another spelling of a resident's MedHub name. Raises 409 if another
+    resident already has it. Adding the resident's own name is a no-op."""
+    display = medhub_reports.display_name(name)
+    key = display.casefold()
+    _refuse_if_taken(conn, key, display, resident_id)
+    conn.execute(
+        "INSERT OR IGNORE INTO medhub_name_aliases (name_key, name, resident_id) "
+        "SELECT ?, ?, ? WHERE NOT EXISTS "
+        "(SELECT 1 FROM residents WHERE id = ? AND medhub_name_key = ?)",
+        (key, display, resident_id, resident_id, key),
+    )
+    conn.execute("DELETE FROM medhub_ignored_names WHERE name_key = ?", (key,))
+    return display
+
+
+def resident_aliases(conn, resident_id: str) -> List[str]:
+    return [
+        r["name"] for r in conn.execute(
+            "SELECT name FROM medhub_name_aliases WHERE resident_id = ? ORDER BY created_at, name",
+            (resident_id,),
+        )
+    ]
+
+
+def _similarity(a: str, b: str) -> float:
+    """How alike two names read, 0–1, ignoring word order and punctuation, so
+    "Bradbury, Sarah" is close to "Sarah Mae Bradbury" and to "Bradbery, Sara"."""
+    def words(s):
+        return sorted(re.findall(r"[^\W_]+", s.casefold()))
+    wa, wb = words(a), words(b)
+    whole = SequenceMatcher(None, " ".join(wa), " ".join(wb)).ratio()
+    # Every word of the shorter name closely matches some word of the longer
+    # one: a middle name or second surname present on only one side.
+    short, long_ = sorted((wa, wb), key=len)
+    if short and all(max(SequenceMatcher(None, w, x).ratio() for x in long_) >= 0.8 for w in short):
+        whole = max(whole, 0.85)
+    return whole
+
+
+def _suggest(name: str, residents, aliases_by_resident, limit: int = 3) -> List[str]:
+    """Ids of the residents a report name most likely means, best first."""
+    scored = []
+    for r in residents:
+        candidates = [f'{r["last_name"]}, {r["first_name"]}', r["medhub_name"] or ""]
+        candidates += aliases_by_resident.get(r["id"], [])
+        score = max(_similarity(name, c) for c in candidates if c)
+        if score >= 0.75:
+            scored.append((score, r["id"]))
+    scored.sort(key=lambda s: -s[0])
+    return [rid for _score, rid in scored[:limit]]
 
 
 def _question_map(conn) -> dict:
@@ -236,10 +319,13 @@ def analyse(conn, report: medhub_reports.Report) -> dict:
     """Sort every row of the report into what an import would do with it,
     given the database as it is now. Saves nothing."""
     roster = {
-        r["medhub_name_key"]: r
+        r["name_key"]: r
         for r in conn.execute(
-            "SELECT id, first_name, last_name, pgy_year, status, medhub_name, medhub_name_key "
-            "FROM residents WHERE medhub_name_key IS NOT NULL"
+            """SELECT id, first_name, last_name, medhub_name, medhub_name_key AS name_key
+               FROM residents WHERE medhub_name_key IS NOT NULL
+               UNION ALL
+               SELECT r.id, r.first_name, r.last_name, r.medhub_name, a.name_key
+               FROM medhub_name_aliases a JOIN residents r ON r.id = a.resident_id"""
         )
     }
     ignored = {r["name_key"] for r in conn.execute("SELECT name_key FROM medhub_ignored_names")}
@@ -281,9 +367,11 @@ def analyse(conn, report: medhub_reports.Report) -> dict:
         stats = per_resident.setdefault(resident["id"], {
             "resident_id": resident["id"],
             "resident_name": _resident_label(resident),
-            "medhub_name": resident["medhub_name"],
+            "medhub_names": [],        # as spelled in this file
             "new": 0, "duplicates": 0, "changed": 0, "blank": 0, "na": 0,
         })
+        if row.resident not in stats["medhub_names"]:
+            stats["medhub_names"].append(row.resident)
         kind, level = classify(row.answer, mapping["question_type"])
         if mapping["question_type"] == "comment" and kind in ("blank", "na"):
             stats[kind] += 1
@@ -312,6 +400,9 @@ def analyse(conn, report: medhub_reports.Report) -> dict:
         "ORDER BY CASE WHEN status IN ('active', 'chief') THEN 0 ELSE 1 END, "
         "last_name COLLATE NOCASE, first_name COLLATE NOCASE"
     ).fetchall()
+    aliases_by_resident = {}
+    for a in conn.execute("SELECT resident_id, name FROM medhub_name_aliases ORDER BY created_at, name"):
+        aliases_by_resident.setdefault(a["resident_id"], []).append(a["name"])
 
     blocking = None
     if not report.rows:
@@ -331,7 +422,10 @@ def analyse(conn, report: medhub_reports.Report) -> dict:
             )
         },
         "residents": list(per_resident.values()),
-        "not_in_roster": [{"name": n, "rows": c} for n, c in unmatched.items()],
+        "not_in_roster": [
+            {"name": n, "rows": c, "suggestions": _suggest(n, residents, aliases_by_resident)}
+            for n, c in unmatched.items()
+        ],
         "ignored_names_in_file": [{"name": n, "rows": c} for n, c in ignored_in_file.items()],
         "unmapped_questions": [
             {
@@ -359,6 +453,7 @@ def analyse(conn, report: medhub_reports.Report) -> dict:
             {
                 "id": r["id"], "name": _resident_label(r), "pgy_year": r["pgy_year"],
                 "status": r["status"], "medhub_name": r["medhub_name"],
+                "aliases": aliases_by_resident.get(r["id"], []),
             }
             for r in residents
         ],
@@ -498,26 +593,32 @@ class IgnoredName(BaseModel):
 
 @router.post("/link-name")
 def link_name(data: NameLink):
-    """"This is → resident": give the resident this MedHub name. Refused if
-    the resident already has a different one, so a slip of the dropdown
-    cannot silently re-point someone's evaluations."""
+    """"This is → resident": the name becomes the resident's MedHub name, or,
+    if they already have one, another spelling of it. Their existing name is
+    never replaced from here, so a slip of the dropdown only adds a spelling,
+    which can be removed on the resident's page."""
     with _db_connection() as conn:
         resident = conn.execute(
-            "SELECT medhub_name_key, medhub_name FROM residents WHERE id = ?", (data.resident_id,)
+            "SELECT medhub_name_key FROM residents WHERE id = ?", (data.resident_id,)
         ).fetchone()
         if not resident:
             raise HTTPException(status_code=404, detail="Resident not found")
-        key = medhub_reports.name_key(data.name)
-        if not key:
+        if not medhub_reports.name_key(data.name):
             raise HTTPException(status_code=400, detail="A MedHub name is required")
-        if resident["medhub_name_key"] and resident["medhub_name_key"] != key:
-            raise HTTPException(
-                status_code=409,
-                detail=f'That resident already has the MedHub name "{resident["medhub_name"]}". '
-                       "Change it on their page if it is wrong.",
-            )
-        stored = set_resident_medhub_name(conn, data.resident_id, data.name)
-    return {"medhub_name": stored}
+        if resident["medhub_name_key"]:
+            return {"alias": add_resident_alias(conn, data.resident_id, data.name)}
+        return {"medhub_name": set_resident_medhub_name(conn, data.resident_id, data.name)}
+
+
+@router.delete("/aliases")
+def remove_alias(name: str = Query(...)):
+    """Unlink another spelling. Evaluations already imported under it stay
+    with the resident; later reports with that spelling come up unmatched."""
+    with _db_connection() as conn:
+        conn.execute(
+            "DELETE FROM medhub_name_aliases WHERE name_key = ?", (medhub_reports.name_key(name),)
+        )
+    return {"message": "Spelling removed"}
 
 
 @router.get("/ignored-names")
@@ -535,10 +636,7 @@ def ignore_name(data: IgnoredName):
     if not display:
         raise HTTPException(status_code=400, detail="A MedHub name is required")
     with _db_connection() as conn:
-        owner = conn.execute(
-            "SELECT first_name, last_name FROM residents WHERE medhub_name_key = ?",
-            (display.casefold(),),
-        ).fetchone()
+        owner = name_owner(conn, display.casefold())
         if owner:
             raise HTTPException(
                 status_code=409,

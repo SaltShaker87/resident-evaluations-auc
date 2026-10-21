@@ -709,6 +709,29 @@ body {
   color: var(--text-primary);
 }
 
+/* Another spelling of a resident's MedHub name, with its remove button. */
+.medhub-alias {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-right: 0.5rem;
+}
+
+.medhub-alias__remove {
+  display: inline-flex;
+  padding: 0.1rem;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.medhub-alias__remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 .detail-header__actions {
   margin-left: auto;
   display: flex;

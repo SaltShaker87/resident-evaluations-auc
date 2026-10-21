@@ -435,6 +435,7 @@ def get_resident(resident_id: str):
             "SELECT COUNT(*) as cnt FROM notes WHERE resident_id = ?",
             (resident_id,)
         ).fetchone()["cnt"]
+        rd["medhub_aliases"] = medhub_import.resident_aliases(conn, resident_id)
         return rd
 
 @app.put("/api/residents/{resident_id}")

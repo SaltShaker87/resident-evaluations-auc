@@ -203,6 +203,9 @@ export const linkMedhubName = (name, residentId) =>
     body: JSON.stringify({ name, resident_id: residentId }),
   });
 
+export const removeMedhubAlias = (name) =>
+  request(`/medhub/aliases?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+
 export const getIgnoredMedhubNames = () => request('/medhub/ignored-names');
 
 export const ignoreMedhubName = (name) =>
