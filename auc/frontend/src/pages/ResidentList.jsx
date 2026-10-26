@@ -4,7 +4,7 @@ import { Plus, Search, Upload, Users } from 'lucide-react';
 import { getResidents, createResident, bulkImportResidents } from '../api';
 import Avatar from '../components/Avatar';
 
-const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', fellowship: 'Fellowship', other: 'Other' };
+const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', hospitalist: 'Hospitalist', fellowship: 'Fellowship', other: 'Other' };
 const STATUS_LABELS = { graduated: 'Graduated', departed: 'Departed', chief: 'Chief Resident' };
 
 function AddResidentModal({ onClose, onCreated }) {
