@@ -32,6 +32,7 @@ FORBIDDEN_COLUMNS = {
     "photo_filename",
     "medical_school",
     "interests",
+    "support_system",
 }
 
 # Free text, emitted only when include_text=True.

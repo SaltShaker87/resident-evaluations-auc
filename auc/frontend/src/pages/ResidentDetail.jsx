@@ -605,7 +605,7 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
 
 // ---- Edit Resident Modal ----
 
-const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', fellowship: 'Fellowship', other: 'Other' };
+const TRACK_LABELS = { none: 'None', primary_care: 'Primary Care', hospitalist: 'Hospitalist', fellowship: 'Fellowship', other: 'Other' };
 
 function EditResidentModal({ resident, onClose, onSaved }) {
   const [firstName, setFirstName] = useState(resident.first_name);
@@ -613,6 +613,7 @@ function EditResidentModal({ resident, onClose, onSaved }) {
   const [pgyYear, setPgyYear] = useState(resident.pgy_year);
   const [medicalSchool, setMedicalSchool] = useState(resident.medical_school ?? '');
   const [interests, setInterests] = useState(resident.interests ?? '');
+  const [supportSystem, setSupportSystem] = useState(resident.support_system ?? '');
   const [track, setTrack] = useState(resident.track ?? 'none');
   const [isPrelim, setIsPrelim] = useState(!!resident.is_prelim);
   const [prelimSpecialty, setPrelimSpecialty] = useState(resident.prelim_specialty ?? '');
@@ -629,6 +630,7 @@ function EditResidentModal({ resident, onClose, onSaved }) {
         pgy_year: pgyYear,
         medical_school: medicalSchool.trim() || null,
         interests: interests.trim() || null,
+        support_system: supportSystem.trim() || null,
         track,
         is_prelim: isPrelim,
         prelim_specialty: isPrelim ? (prelimSpecialty.trim() || null) : null,
@@ -680,6 +682,10 @@ function EditResidentModal({ resident, onClose, onSaved }) {
           <div className="form-group">
             <label>Interests</label>
             <input className="form-input" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. cardiology, global health" />
+          </div>
+          <div className="form-group">
+            <label>Support System</label>
+            <textarea className="form-textarea" rows={2} value={supportSystem} onChange={(e) => setSupportSystem(e.target.value)} placeholder="e.g. spouse in town, parents nearby, close with co-residents" />
           </div>
           <div className="form-group">
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -887,6 +893,10 @@ export default function ResidentDetail({ showToast }) {
             <div className="profile-field">
               <span className="profile-field__label">Interests</span>
               <span className="profile-field__value">{resident.interests || 'None'}</span>
+            </div>
+            <div className="profile-field" style={{ maxWidth: '28rem' }}>
+              <span className="profile-field__label">Support System</span>
+              <span className="profile-field__value" style={{ whiteSpace: 'pre-line' }}>{resident.support_system || 'None'}</span>
             </div>
             <div className="profile-field">
               <span className="profile-field__label">MedHub name</span>

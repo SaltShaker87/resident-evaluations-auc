@@ -186,6 +186,7 @@ def init_db():
             "ALTER TABLE notes ADD COLUMN source TEXT",
             "ALTER TABLE residents ADD COLUMN is_prelim INTEGER DEFAULT 0",
             "ALTER TABLE residents ADD COLUMN prelim_specialty TEXT",
+            "ALTER TABLE residents ADD COLUMN support_system TEXT",
             # Deactivating an advisor keeps their assignments; deleting one
             # sends their residents back to Unassigned.
             "ALTER TABLE residents ADD COLUMN advisor_id TEXT REFERENCES advisors(id) ON DELETE SET NULL",
@@ -231,6 +232,7 @@ class ResidentUpdate(BaseModel):
     track: Optional[str] = None
     is_prelim: Optional[bool] = None
     prelim_specialty: Optional[str] = None
+    support_system: Optional[str] = None
     advisor_id: Optional[str] = None
     medhub_name: Optional[str] = None
 

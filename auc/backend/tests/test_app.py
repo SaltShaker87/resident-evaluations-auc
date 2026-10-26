@@ -58,6 +58,19 @@ def test_a_resident_and_a_note_survive_a_round_trip(logged_in):
     assert listing[0]["total_notes"] == 1
 
 
+def test_support_system_and_hospitalist_track_are_saved(logged_in):
+    rid = logged_in.post("/api/residents", json={
+        "first_name": "Ada", "last_name": "Lovelace", "pgy_year": 2,
+    }).json()["id"]
+    saved = logged_in.put(f"/api/residents/{rid}", json={
+        "support_system": "Spouse in town, parents nearby", "track": "hospitalist",
+    })
+    assert saved.status_code == 200, saved.text
+    resident = logged_in.get(f"/api/residents/{rid}").json()
+    assert resident["support_system"] == "Spouse in town, parents nearby"
+    assert resident["track"] == "hospitalist"
+
+
 def test_non_latin_names_round_trip(logged_in):
     """Names with accents must survive storage, not come back mangled."""
     created = logged_in.post("/api/residents", json={
