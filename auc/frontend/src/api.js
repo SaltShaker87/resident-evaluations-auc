@@ -169,6 +169,8 @@ export const getOllamaModels = () => request('/ollama/models');
 // ACGME index health — reported before a summary is attempted, not during one.
 export const getRagStatus = () => request('/rag/status');
 
+export const getVersion = () => request('/version');
+
 export const setRetrievalEngine = (engine) =>
   request('/rag/engine', { method: 'PUT', body: JSON.stringify({ engine }) });
 

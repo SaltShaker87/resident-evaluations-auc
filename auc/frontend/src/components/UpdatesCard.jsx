@@ -204,9 +204,7 @@ export default function UpdatesCard({ onCheck }) {
   }
 
   return (
-    <div className="card settings-card" style={{ marginTop: '1rem' }}>
-      <div className="settings-section-title">Updates</div>
-
+    <div className="card settings-card">
       <div className="settings-row">
         <div>
           <div className="settings-row__label">

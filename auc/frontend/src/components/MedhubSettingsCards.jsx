@@ -33,7 +33,7 @@ export default function MedhubSettingsCards() {
 
   return (
     <>
-      <div className="card settings-card" style={{ marginTop: '1rem' }}>
+      <div className="card settings-card">
         <div className="settings-section-title">MedHub question mapping</div>
         <div className="settings-row__desc" style={{ paddingTop: '1rem', paddingBottom: '0.75rem' }}>
           Each evaluation question, per form, and the ACGME competency area it counts toward.
@@ -60,7 +60,7 @@ export default function MedhubSettingsCards() {
         )}
       </div>
 
-      <div className="card settings-card" style={{ marginTop: '1rem' }}>
+      <div className="card settings-card">
         <div className="settings-section-title">Ignored MedHub names</div>
         <div className="settings-row__desc" style={{ paddingTop: '1rem' }}>
           Names a MedHub import skips without asking — residents who have graduated or left.

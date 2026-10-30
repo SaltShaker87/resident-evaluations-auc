@@ -168,7 +168,7 @@ function Preview({ file, preview, onRefresh, onCancel, onSave, saving, showToast
           <h3 className="preview-block__title">Map these questions</h3>
           <p className="text-sm text-muted preview-block__desc">
             AUC hasn&apos;t seen these questions before. Give each a type and a competency area.
-            You can change them later in Settings.
+            You can change them later in Settings → MedHub Import.
           </p>
           <MedhubQuestionMap
             key={preview.unmapped_questions.map((q) => q.form_name + q.question).join('|')}
@@ -255,7 +255,7 @@ function Preview({ file, preview, onRefresh, onCancel, onSave, saving, showToast
       {preview.ignored_names_in_file.length > 0 && (
         <p className="text-sm text-muted preview-block">
           Ignored names in this file: {preview.ignored_names_in_file.map((n) => `${n.name} (${n.rows})`).join(', ')}.
-          Manage them in Settings.
+          Manage them in Settings → MedHub Import.
         </p>
       )}
 

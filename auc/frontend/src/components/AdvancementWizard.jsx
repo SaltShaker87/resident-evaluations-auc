@@ -123,7 +123,7 @@ export default function AdvancementWizard({ onClose, onComplete }) {
               <h3>Residents advanced successfully</h3>
               <p className="text-muted">{buildSummary() || 'No changes were applied.'}</p>
               <p className="text-sm text-muted mt-md">
-                You can undo this advancement from the Settings page.
+                You can undo this advancement from Settings → Academic Year.
               </p>
             </div>
           ) : (

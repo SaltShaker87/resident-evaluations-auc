@@ -129,7 +129,10 @@ export default function App() {
           <NavLink to="/study" className={({ isActive }) => isActive ? 'active' : ''}>
             <FlaskConical size={16} /> Study Data
           </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>
+          <NavLink
+            to={updateAvailable ? '/settings/updates' : '/settings'}
+            className={({ isActive }) => isActive ? 'active' : ''}
+          >
             <SettingsIcon size={16} /> Settings
             {updateAvailable && (
               <span className="nav-dot" title="An update is available" aria-label="An update is available" />
@@ -148,7 +151,17 @@ export default function App() {
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
           <Route path="/study" element={<StudyData showToast={showToast} />} />
-          <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} onUpdateCheck={handleUpdateCheck} />} />
+          <Route
+            path="/settings/:section?"
+            element={(
+              <SettingsPage
+                theme={theme}
+                setTheme={setTheme}
+                updateAvailable={updateAvailable}
+                onUpdateCheck={handleUpdateCheck}
+              />
+            )}
+          />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />
