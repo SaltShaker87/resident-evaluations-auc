@@ -49,10 +49,8 @@ export default function AdvisorsCard() {
   };
 
   return (
-    <div className="card settings-card" style={{ marginTop: '1rem' }}>
-      <div className="settings-section-title">Advisors</div>
-
-      <div className="settings-row__desc" style={{ paddingTop: '1rem' }}>
+    <div className="card settings-card">
+      <div className="settings-row__desc">
         Assign one to each resident from their page. Deactivating an advisor keeps their
         current assignments; deleting one sets those residents to Unassigned. Advisors are
         never used in AI summaries.

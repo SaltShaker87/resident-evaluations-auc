@@ -131,7 +131,7 @@ export default function App() {
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
           <Route path="/study" element={<StudyData showToast={showToast} />} />
-          <Route path="/settings" element={<SettingsPage theme={theme} setTheme={setTheme} />} />
+          <Route path="/settings/:section?" element={<SettingsPage theme={theme} setTheme={setTheme} />} />
         </Routes>
       </main>
       <ToastContainer toasts={toasts} />
