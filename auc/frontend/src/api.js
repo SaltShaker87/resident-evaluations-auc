@@ -81,6 +81,9 @@ export const uploadPhoto = async (residentId, file) => {
   return res.json();
 };
 
+export const deletePhoto = (residentId) =>
+  request(`/residents/${residentId}/photo`, { method: 'DELETE' });
+
 export const getPhotoUrl = (filename) =>
   filename ? `${BASE}/photos/${filename}` : null;
 
@@ -202,6 +205,9 @@ export const linkMedhubName = (name, residentId) =>
     body: JSON.stringify({ name, resident_id: residentId }),
   });
 
+export const removeMedhubAlias = (name) =>
+  request(`/medhub/aliases?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+
 export const getIgnoredMedhubNames = () => request('/medhub/ignored-names');
 
 export const ignoreMedhubName = (name) =>
@@ -253,6 +259,16 @@ async function downloadFile(path, fallbackName) {
 
 // Data management
 export const downloadBackup = () => downloadFile('/backup', 'auc-backup.zip');
+
+// Updates (Settings → Updates). The server keeps its answer for a day, so the
+// app can ask on every load; refresh=true asks GitHub now.
+export const getUpdateCheck = (refresh = false) =>
+  request(`/update/check${refresh ? '?refresh=true' : ''}`);
+
+export const startUpdate = (version) =>
+  request('/update/start', { method: 'POST', body: JSON.stringify({ version }) });
+
+export const getUpdateStatus = () => request('/update/status');
 
 // Export an approved summary as a PDF
 export const exportSummaryPdf = (residentId, summaryId) =>

@@ -24,6 +24,7 @@ import pdf_export
 import rag_retrieval
 import retrieval_engine
 import summary_builder
+import update_api
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -185,6 +186,7 @@ def init_db():
             "ALTER TABLE notes ADD COLUMN source TEXT",
             "ALTER TABLE residents ADD COLUMN is_prelim INTEGER DEFAULT 0",
             "ALTER TABLE residents ADD COLUMN prelim_specialty TEXT",
+            "ALTER TABLE residents ADD COLUMN support_system TEXT",
             # Deactivating an advisor keeps their assignments; deleting one
             # sends their residents back to Unassigned.
             "ALTER TABLE residents ADD COLUMN advisor_id TEXT REFERENCES advisors(id) ON DELETE SET NULL",
@@ -230,6 +232,7 @@ class ResidentUpdate(BaseModel):
     track: Optional[str] = None
     is_prelim: Optional[bool] = None
     prelim_specialty: Optional[str] = None
+    support_system: Optional[str] = None
     advisor_id: Optional[str] = None
     medhub_name: Optional[str] = None
 
@@ -317,6 +320,7 @@ retrieval_engine.init_retrieval_engine(db_connection)
 medhub_import.init_medhub_import(db_connection, ACGME_DOMAINS)
 app.include_router(auth.router)
 app.include_router(ccc.router)
+app.include_router(update_api.router)
 app.include_router(medhub_import.router)
 
 
@@ -433,6 +437,7 @@ def get_resident(resident_id: str):
             "SELECT COUNT(*) as cnt FROM notes WHERE resident_id = ?",
             (resident_id,)
         ).fetchone()["cnt"]
+        rd["medhub_aliases"] = medhub_import.resident_aliases(conn, resident_id)
         return rd
 
 @app.put("/api/residents/{resident_id}")
@@ -478,6 +483,7 @@ def update_resident(resident_id: str, updates: ResidentUpdate):
 def delete_resident(resident_id: str):
     with db_connection() as conn:
         conn.execute("DELETE FROM residents WHERE id = ?", (resident_id,))
+    _remove_resident_photos(resident_id)
     return {"message": "Resident deleted"}
 
 # ---------------------------------------------------------------------------
@@ -553,6 +559,14 @@ def _photo_signature_matches(ext: str, content: bytes) -> bool:
         return len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
     return False
 
+def _remove_resident_photos(resident_id: str, keep: Optional[str] = None):
+    """Delete every stored photo for a resident, both the old fixed name
+    ({id}.jpg) and per-upload names ({id}-xxxxxxxx.jpg), except `keep`."""
+    for path in PHOTOS_DIR.iterdir():
+        stem = path.stem
+        if path.name != keep and (stem == resident_id or stem.startswith(f"{resident_id}-")):
+            path.unlink(missing_ok=True)
+
 @app.post("/api/residents/{resident_id}/photo")
 async def upload_photo(resident_id: str, file: UploadFile = File(...)):
     # Validate resident exists
@@ -577,15 +591,11 @@ async def upload_photo(resident_id: str, file: UploadFile = File(...)):
             detail="File contents don't match an allowed image type",
         )
 
-    # Remove any previous photo for this resident (it may have a different extension)
-    filename = f"{resident_id}{ext}"
-    for old_ext in ALLOWED_PHOTO_TYPES:
-        old_path = PHOTOS_DIR / f"{resident_id}{old_ext}"
-        if old_path.exists() and old_path.name != filename:
-            old_path.unlink()
-
+    # A fresh filename per upload so browsers don't keep showing a cached old photo
+    filename = f"{resident_id}-{uuid.uuid4().hex[:8]}{ext}"
     with open(PHOTOS_DIR / filename, "wb") as f:
         f.write(content)
+    _remove_resident_photos(resident_id, keep=filename)
 
     # Update resident record
     with db_connection() as conn:
@@ -594,6 +604,19 @@ async def upload_photo(resident_id: str, file: UploadFile = File(...)):
             (filename, resident_id)
         )
     return {"message": "Photo uploaded", "filename": filename}
+
+@app.delete("/api/residents/{resident_id}/photo")
+def delete_photo(resident_id: str):
+    with db_connection() as conn:
+        row = conn.execute("SELECT id FROM residents WHERE id = ?", (resident_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Resident not found")
+        conn.execute(
+            "UPDATE residents SET photo_filename = NULL, updated_at = datetime('now') WHERE id = ?",
+            (resident_id,)
+        )
+    _remove_resident_photos(resident_id)
+    return {"message": "Photo removed"}
 
 @app.get("/api/photos/{filename}")
 def get_photo(filename: str):

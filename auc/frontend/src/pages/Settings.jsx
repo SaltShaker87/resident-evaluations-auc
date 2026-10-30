@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
-import { Palette, Sparkles, Users, FileInput, GraduationCap, HardDrive, Info } from 'lucide-react';
+import { Palette, Sparkles, Users, FileInput, GraduationCap, HardDrive, RefreshCw, Info } from 'lucide-react';
 import { getActiveSnapshot } from '../api';
 import AppearanceSection from '../components/settings/AppearanceSection';
 import AiSection from '../components/settings/AiSection';
 import AdvisorsCard from '../components/AdvisorsCard';
+import UpdatesCard from '../components/UpdatesCard';
 import MedhubSettingsCards from '../components/MedhubSettingsCards';
 import AcademicYearSection from '../components/settings/AcademicYearSection';
 import BackupSection from '../components/settings/BackupSection';
@@ -25,11 +26,13 @@ const SECTIONS = [
     desc: 'Move every resident on to the next year, or undo the last time you did.' },
   { key: 'backup', label: 'Backup & Data', icon: HardDrive,
     desc: 'Keep a copy of everything somewhere safe.' },
+  { key: 'updates', label: 'Updates', icon: RefreshCw,
+    desc: 'Which version is running, and installing a newer one.' },
   { key: 'about', label: 'About', icon: Info,
     desc: 'Version, credits, and where your data lives.' },
 ];
 
-export default function Settings({ theme, setTheme }) {
+export default function Settings({ theme, setTheme, updateAvailable, onUpdateCheck }) {
   const { section } = useParams();
   const current = SECTIONS.find((s) => s.key === section);
 
@@ -58,6 +61,9 @@ export default function Settings({ theme, setTheme }) {
               {key === 'academic-year' && snapshot && (
                 <span className="settings-nav__dot" title="An advancement can still be undone" />
               )}
+              {key === 'updates' && updateAvailable && (
+                <span className="settings-nav__dot" title="An update is available" />
+              )}
             </NavLink>
           ))}
         </nav>
@@ -76,6 +82,7 @@ export default function Settings({ theme, setTheme }) {
             <AcademicYearSection snapshot={snapshot} reloadSnapshot={loadSnapshot} />
           )}
           {current.key === 'backup' && <BackupSection />}
+          {current.key === 'updates' && <UpdatesCard onCheck={onUpdateCheck} />}
           {current.key === 'about' && <AboutSection />}
         </section>
       </div>

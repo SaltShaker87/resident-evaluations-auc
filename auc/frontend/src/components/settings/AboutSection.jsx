@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, HardDrive, Cpu, CloudOff } from 'lucide-react';
+import { ShieldCheck, HardDrive, Cpu, CloudOff, RefreshCw } from 'lucide-react';
 import { getVersion } from '../../api';
 import aucMark from '../../assets/auc-mark.png';
 
@@ -71,6 +71,10 @@ export default function AboutSection() {
           <li>
             <CloudOff size={15} />
             <span>Nothing is uploaded to a cloud or shared with an outside company, NVIDIA and Salt Shaker Studio included.</span>
+          </li>
+          <li>
+            <RefreshCw size={15} />
+            <span>The only thing AUC fetches from the internet is new versions of itself, from GitHub. Checking for one sends no resident data.</span>
           </li>
         </ul>
       </div>

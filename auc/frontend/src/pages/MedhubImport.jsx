@@ -39,17 +39,31 @@ function Count({ value, label, tone }) {
   );
 }
 
-// The "Not in roster" list: link a name to a resident (saves that resident's
-// MedHub name) or ignore it (remembered for later imports). Nothing is guessed.
+function residentOption(r) {
+  const names = [r.medhub_name, ...r.aliases].filter(Boolean);
+  return (
+    <option key={r.id} value={r.id}>
+      {r.name} (PGY-{r.pgy_year}{r.status && r.status !== 'active' ? `, ${r.status}` : ''})
+      {names.length ? ` — ${names.map((n) => `“${n}”`).join(', ')}` : ''}
+    </option>
+  );
+}
+
+// The "Not in roster" list: link a name to a resident (it becomes their MedHub
+// name, or another spelling of it if they have one) or ignore it (remembered for
+// later imports). Likely residents are listed first, but nothing is guessed.
 function NotInRoster({ names, roster, onLink, onIgnore, busyName }) {
   const [choice, setChoice] = useState({});
+  const byId = Object.fromEntries(roster.map((r) => [r.id, r]));
   return (
     <div className="preview-block">
       <h3 className="preview-block__title">Not in roster</h3>
       <p className="text-sm text-muted preview-block__desc">
-        These names have no resident with that MedHub name, so their evaluations are left
-        out of this import. Link a name to the right resident, or ignore it — for example
-        a resident who has graduated. Ignored names won&apos;t come up again.
+        These names don&apos;t match any resident&apos;s MedHub name, so their evaluations are
+        left out of this import. Link a name to the right resident — if it&apos;s a typo or
+        another spelling, it is added to that resident&apos;s names and matched from now on.
+        Or ignore it, for example a resident who has graduated. Ignored names won&apos;t
+        come up again.
       </p>
       <div className="table-scroll">
         <table className="data-table data-table--wrap">
@@ -57,7 +71,7 @@ function NotInRoster({ names, roster, onLink, onIgnore, busyName }) {
             <tr><th>Name in MedHub</th><th>Rows</th><th>This is…</th><th /></tr>
           </thead>
           <tbody>
-            {names.map(({ name, rows }) => (
+            {names.map(({ name, rows, suggestions = [] }) => (
               <tr key={name}>
                 <td><strong>{name}</strong></td>
                 <td>{rows}</td>
@@ -70,12 +84,14 @@ function NotInRoster({ names, roster, onLink, onIgnore, busyName }) {
                       onChange={(e) => setChoice((c) => ({ ...c, [name]: e.target.value }))}
                     >
                       <option value="">Choose a resident…</option>
-                      {roster.map((r) => (
-                        <option key={r.id} value={r.id} disabled={!!r.medhub_name}>
-                          {r.name} (PGY-{r.pgy_year}{r.status && r.status !== 'active' ? `, ${r.status}` : ''})
-                          {r.medhub_name ? ` — already “${r.medhub_name}”` : ''}
-                        </option>
-                      ))}
+                      {suggestions.length > 0 ? (
+                        <>
+                          <optgroup label="Likely matches">
+                            {suggestions.filter((id) => byId[id]).map((id) => residentOption(byId[id]))}
+                          </optgroup>
+                          <optgroup label="All residents">{roster.map(residentOption)}</optgroup>
+                        </>
+                      ) : roster.map(residentOption)}
                     </select>
                     <button
                       className="btn btn--secondary btn--sm"
@@ -187,7 +203,7 @@ function Preview({ file, preview, onRefresh, onCancel, onSave, saving, showToast
               <tbody>
                 {preview.residents.map((r) => (
                   <tr key={r.resident_id}>
-                    <td>{r.resident_name} <span className="text-muted">({r.medhub_name})</span></td>
+                    <td>{r.resident_name} <span className="text-muted">({r.medhub_names.join('; ')})</span></td>
                     <td>{r.new}</td><td>{r.duplicates}</td><td>{r.changed}</td>
                     <td>{r.blank}</td><td>{r.na}</td>
                   </tr>

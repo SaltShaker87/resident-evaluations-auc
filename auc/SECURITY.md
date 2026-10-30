@@ -160,6 +160,27 @@ weights.
 
 ---
 
+## Updates from Settings
+
+The update check is the one internet connection AUC makes without anyone
+pressing a button for it. The MedHub sync, when it is configured, only runs
+when you start it. About once a day while AUC is in use, and whenever someone
+presses **Check for updates**, AUC asks GitHub for this project's newest
+published release. The request carries no
+resident data, only AUC's version number in the `User-Agent`. An update
+downloads from this project's GitHub releases and nowhere else, and only once
+someone logged in starts it. Before anything is unpacked, the download must
+match two fingerprints: the `.sha256` file published with the release and the
+fingerprint GitHub recorded when the file was uploaded.
+
+What that does and does not prove: the file is exactly what was published on
+this repository's releases page, intact. It does not protect against someone
+who has taken over the GitHub account and publishes a release of their own. The
+installer has the same limit. Keep two-factor sign-in on the GitHub account
+that publishes releases.
+
+---
+
 ## Still recommended before hosting on the DGX Spark
 
 These were identified in the review. Items 2 and 3 have since been done and
