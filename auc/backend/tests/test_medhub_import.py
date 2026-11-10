@@ -624,7 +624,7 @@ def test_comments_reach_summaries_but_scores_blanks_and_n_a_do_not(logged_in, ap
     _ok(_send(logged_in, "import", "eqs_inpatient_jul_sep.html"))
 
     # Haddad has no committee notes; her MedHub comments are enough.
-    _resident_row, _label, evidence = app_module._load_resident_evidence(ids["haddad"])
+    _resident_row, _label, evidence, _info = app_module._load_resident_evidence(ids["haddad"])
     assert [e["text"] for e in evidence] == [HADDAD_JUL[5][5], HADDAD_SEP[5][5]]
     assert evidence[0]["label"].startswith(f"MedHub comment, {INPATIENT}, evaluator=Alvarez, Rosa, "
                                            "rotation 2026-07-06 to 2026-07-19, service=WARDS1")

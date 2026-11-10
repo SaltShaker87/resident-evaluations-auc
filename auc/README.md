@@ -13,6 +13,8 @@ A local-first residency feedback management tool for internal medicine programs.
 - **Edit and approve** — review each section, adjust the narrative or level, and save the final version
 - **Import MedHub evaluations** — load MedHub's Evaluation Questions Summary report (saved as a web page); milestone ratings become graphs on each resident's page and comments feed the AI summaries, with nothing ever imported twice (see "Importing From MedHub" below)
 - **Download a backup** — from the Settings page, download a dated copy of your entire database with one click
+- **Review periods** — a summary covers one resident's review period (by default from their previous packet, last committee review, or the start of the academic year, up to today), not every comment ever stored; "All time" is still one click away (see "Review Periods" below)
+- **Advisor packets** — on the **Packets** page, build a PDF per advisee for each advisor presenting at a meeting, randomize which advisees get theirs first, and download one zip per advisor (see "Advisor Packets" below)
 - **Capture CCC meetings for study** — start a meeting and a slide-over drawer records what the room recalled unprompted, what you had to surface, and what it changed, with de-identified CSV exports (see "CCC Meeting Capture" below)
 - **Password protected** — a single shared password guards all resident data (see "Logging In" below)
 
@@ -99,7 +101,7 @@ whole report in one go. Instead:
 3. Each sub-competency that has at least one routed comment gets **its own small
    model call**, containing only that sub-competency's ACGME descriptor and only its
    own comments. The model writes 2–3 sentences in its own words and suggests a level.
-4. Sub-competencies with no routed comments are marked "No evidence this cycle"
+4. Sub-competencies with no routed comments are marked "No evidence in this review period"
    without calling the model at all.
 5. **Every quote is verified.** A quote that does not appear word-for-word in the
    comments routed to that sub-competency is dropped. If none of a section's quotes
@@ -169,6 +171,49 @@ On another NVIDIA machine that can run the containers, `bash start-nemotron.sh`
 then `backend/venv/bin/python rag/build_index.py` makes Nemotron selectable
 there too. `rag/README.md` has the detail.
 
+## Review Periods
+
+Every summary covers a **review period**: a date range ending on its **cutoff
+date**. Next to **Generate Summary** on a resident's page you choose:
+
+- **Current review period** (the default), up to today or a date you pick. It
+  starts the day after this resident's previous advisor packet; if there is
+  none, the day after the last CCC meeting where they were actually discussed
+  (this academic year); otherwise at the start of the academic year, 23 June.
+- **Dates I choose**, any start and end date.
+- **All time**, every note and comment ever stored, exactly as summaries
+  worked before review periods existed.
+
+and whether to read **MedHub comments and committee notes**, or **MedHub
+comments only**. Before you press Generate, the page shows the dates, how many
+comments from how many evaluators across how many rotations, the resident's
+PGY year on the last day of the period, and a warning if the newest MedHub
+import is more than 3 days older than the cutoff.
+
+A MedHub comment is in the period when its rotation **ended** inside it. A
+summary also records which MedHub import it was built from, and never reads
+anything imported later, so a later import cannot change what an earlier
+summary says it was based on. The model is never told any dates.
+
+The academic year start, the lead time and the other numbers are settings,
+listed in `.env.example`. The full rules are in `CCC.md`, "Advisor packets".
+
+## Advisor Packets
+
+The **Packets** page (in the header) builds, for each advisor presenting at a
+meeting, one PDF per advisee: their PGY year, the review period, MedHub's own
+milestone ratings for the period as counts, an AI-written strength and growth
+area for each of the six competencies (every quotation checked word for word),
+what their previous packet said, and the 21 sub-competency sections as an
+appendix. Packets are unedited AI drafts, say so on the first page, and do not
+need approval. Generation runs one resident at a time on the server, so you
+can leave the page while it works. AUC sends nothing to anyone: download the
+zip files and hand them out.
+
+The page also assigns each advisee a study group for the CCC study, by hand or
+once per meeting with **Randomize within each advisor**. How randomization
+works, what is recorded and the `ccc-packets.csv` export are in **`CCC.md`**.
+
 ## Changing the AI Model
 
 Any model in `ollama list` will do. **Settings → Default Ollama model** picks
@@ -211,8 +256,11 @@ bash auc/check-model.sh nemotron:latest
 
 It runs three real sub-competency generations through the app's own prompt,
 parser and validator, reports on both requirements, times a section and
-extrapolates to a full 21-section run. It exits non-zero if the model cannot
-be used. Nothing is written to the database or the validation log.
+extrapolates to a full 21-section run. It also runs two of an advisor packet's
+competency generations (strengths and growth areas, a different reply shape)
+and reports whether their statements survive the same quote check. It exits
+non-zero if the model cannot be used for either. Nothing is written to the
+database or the validation log.
 
 Then confirm on a real resident with real notes before a meeting depends on it.
 
@@ -354,7 +402,8 @@ browser and retry, so nothing typed is lost.
 When no meeting is running, the app looks and behaves exactly as it does without this
 feature — no banner, no drawer, nothing extra on the resident page.
 
-The **Study Data** page downloads three CSVs covering all meetings to date. Residents appear
+The **Study Data** page downloads four CSVs covering all meetings to date (the fourth is
+one row per advisor packet). Residents appear
 only as study codes (`R001`, `R002`, …) — never a name, never an internal id — and free-text
 answers are left out of the files unless you explicitly turn them on.
 
@@ -415,9 +464,11 @@ auc/
 │   ├── medhub_reports.py ← reads MedHub's Evaluation Questions Summary (HTML)
 │   ├── medhub_import.py  ← MedHub import: preview, save, question map, ignored names, log
 │   ├── summary_builder.py ← AI summaries: one call per sub-competency + quote checking
+│   ├── review_period.py  ← which evidence a summary covers: periods, snapshots, PGY at cutoff
+│   ├── packets.py    ← advisor packets: meetings, randomization, generation, downloads
 │   ├── rag_retrieval.py   ← routes notes to ACGME sub-competencies, with either engine
 │   ├── retrieval_engine.py ← which engine is in force, and can this machine run it
-│   ├── pdf_export.py ← builds summary PDFs
+│   ├── pdf_export.py ← builds summary PDFs and advisor packets
 │   ├── backup.py     ← full backup (db + photos), manual & scheduled
 │   ├── reset_password.py  ← last-resort password reset
 │   ├── config.py     ← every environment variable is read here, and only here

@@ -21,6 +21,10 @@ no amount of reading a model card will tell you:
 This runs the real code path — the app's own prompt builder, Ollama call,
 parser and validator — against made-up committee comments, so what it measures
 is what will happen. It touches no database and writes no log.
+
+It checks both prompts the app sends: the sub-competency sections of every
+summary, and the six-competency strengths and growth areas of an advisor
+packet, which ask for a different JSON shape and are checked the same way.
 """
 
 import argparse
@@ -105,6 +109,39 @@ TRIALS = [
     },
 ]
 
+# Advisor packets: one call per ACGME competency for "strengths" and "growth
+# areas". Each set of comments holds both praise and something to work on, so a
+# model that is working should return both statements, each with an exact quote.
+COMPETENCY_TRIALS = [
+    {
+        "entry": {"id": "PC", "name": "Patient Care", "domain": "PC",
+                  "domain_name": "Patient Care"},
+        "comments": [
+            {"text": "Anticipated the diuresis plan two days out and had the electrolyte "
+                     "checks arranged before rounds.",
+             "label": "MedHub comment, evaluator=Example, Attending"},
+            {"text": "Kept a coherent plan for a patient with three competing problems "
+                     "through a complicated discharge.",
+             "label": "MedHub comment, evaluator=Example, Attending"},
+            {"text": "Orders a wide net of tests early; work on narrowing the differential "
+                     "before sending labs.",
+             "label": "MedHub comment, evaluator=Example, Attending"},
+        ],
+    },
+    {
+        "entry": {"id": "ICS", "name": "Interpersonal and Communication Skills",
+                  "domain": "ICS", "domain_name": "Interpersonal and Communication Skills"},
+        "comments": [
+            {"text": "Ran a goals-of-care discussion with a hostile daughter and left her "
+                     "visibly reassured.",
+             "label": "MedHub comment, evaluator=Example, Attending"},
+            {"text": "Uses hedging language with families when the prognosis is uncertain; "
+                     "be more direct.",
+             "label": "MedHub comment, evaluator=Example, Attending"},
+        ],
+    },
+]
+
 OK = "\033[32m"
 BAD = "\033[31m"
 WARN = "\033[33m"
@@ -182,15 +219,69 @@ async def run_trial(client, model, trial, logger):
     return result
 
 
-async def main_async(model, trials, show_output, use_colour):
+async def run_competency_trial(client, model, trial, logger):
+    """One competency's strengths and growth areas, exactly as a packet does it."""
+    prompt = summary_builder.build_competency_prompt(
+        "Dr. Test Resident", trial["entry"], trial["comments"]
+    )
+    started = time.monotonic()
+    try:
+        raw = await summary_builder.call_ollama(client, model, prompt)
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Ollama returned {e.response.status_code}: {e.response.text[:200]}"}
+    except summary_builder.PromptTruncated as e:
+        return {"error": f"Ollama cut the prompt short ({e}). Its context window is "
+                         f"smaller than this model needs."}
+    except Exception as e:
+        return {"error": f"Could not reach Ollama: {e}"}
+    elapsed = time.monotonic() - started
+
+    result = {"elapsed": elapsed, "raw": raw, "id": trial["entry"]["id"]}
+    try:
+        parsed = summary_builder.parse_model_json(raw)
+    except ValueError as e:
+        result["json_ok"] = False
+        result["json_error"] = str(e)
+        return result
+    result["json_ok"] = True
+
+    offered, rejected = [], []
+    for key in summary_builder.COMPETENCY_PARTS:
+        block = parsed.get(key)
+        quotes = block.get("quotes") if isinstance(block, dict) else None
+        if isinstance(quotes, str):
+            quotes = [quotes]
+        for q in quotes if isinstance(quotes, list) else []:
+            offered.append(q)
+            if not isinstance(q, str) or summary_builder.find_verbatim(q, trial["comments"]) is None:
+                rejected.append(q if isinstance(q, str) else repr(q))
+
+    block = summary_builder.validate_competency(
+        trial["entry"], parsed, trial["comments"], logger, "[check-model]"
+    )
+    kept = [block[k] for k in summary_builder.COMPETENCY_PARTS if block[k]]
+    result.update({
+        "status": block["status"],
+        "statements_kept": len(kept),
+        "quotes_offered": len(offered),
+        "quotes_kept": sum(len(b["quotes"]) for b in kept),
+        "rejected": rejected,
+        "statements": {k: (block[k] or {}).get("text") for k in summary_builder.COMPETENCY_PARTS},
+    })
+    return result
+
+
+async def main_async(model, trials, show_output, use_colour, competency_trials=None):
     ok, bad, warn, dim, off = colour(use_colour)
     logger = _silent_logger()
 
     print()
     print(f"  Testing model: {model}")
     print(f"  Ollama: {OLLAMA_URL}")
-    print(f"  {dim}Running {len(trials)} sub-competency generations, the same way the app "
-          f"does.{off}")
+    competency_trials = COMPETENCY_TRIALS if competency_trials is None else competency_trials
+    print(f"  {dim}Running {len(trials)} sub-competency generations and "
+          f"{len(competency_trials)} advisor-packet competency generations, the same way "
+          f"the app does.{off}")
     print(f"  {dim}A large model can take a minute or more per section.{off}")
     print()
 
@@ -214,6 +305,26 @@ async def main_async(model, trials, show_output, use_colour):
                 print(f"{bad}no quotes survived{off}  ({result['elapsed']:.1f}s)")
             else:
                 print(f"{ok}ok{off}  ({result['elapsed']:.1f}s, "
+                      f"{result['quotes_kept']}/{result['quotes_offered']} quotes verbatim)")
+
+        comp_results = []
+        for index, trial in enumerate(competency_trials, start=1):
+            label = f"packet: {trial['entry']['name'][:48]}"
+            print(f"  [{index}/{len(competency_trials)}] {label} ... ", end="", flush=True)
+            result = await run_competency_trial(client, model, trial, logger)
+            comp_results.append(result)
+
+            if "error" in result:
+                print(f"{bad}failed{off}")
+                print(f"      {result['error']}")
+                return 1
+            if not result["json_ok"]:
+                print(f"{bad}not JSON{off}  ({result['elapsed']:.1f}s)")
+            elif result["statements_kept"] == 0:
+                print(f"{bad}no statement survived{off}  ({result['elapsed']:.1f}s)")
+            else:
+                print(f"{ok}ok{off}  ({result['elapsed']:.1f}s, "
+                      f"{result['statements_kept']}/2 statements kept, "
                       f"{result['quotes_kept']}/{result['quotes_offered']} quotes verbatim)")
 
     print()
@@ -278,13 +389,49 @@ async def main_async(model, trials, show_output, use_colour):
     elif levels:
         print(f"  {warn}⚠{off} Some replies had no usable milestone level  {dim}({levels}){off}")
 
+    # --- Requirement 3: advisor packet competencies ------------------------
+    comp_json = sum(1 for r in comp_results if r.get("json_ok"))
+    comp_ok = sum(1 for r in comp_results if r.get("status") == summary_builder.STATUS_OK)
+    both = sum(1 for r in comp_results if r.get("statements_kept") == 2)
+    c_offered = sum(r.get("quotes_offered", 0) for r in comp_results)
+    c_kept = sum(r.get("quotes_kept", 0) for r in comp_results)
+    if not comp_results:
+        pass
+    elif comp_json < len(comp_results):
+        print(f"  {bad}✗{off} Packet competencies: does NOT reliably return the strengths and "
+              f"growth areas JSON  {dim}({comp_json}/{len(comp_results)} parsed){off}")
+        for r in comp_results:
+            if not r.get("json_ok"):
+                print(f"      {r['id']}: {r.get('json_error')}")
+                print(f"      {dim}returned: {r['raw'][:160]!r}{off}")
+    elif both == len(comp_results) and c_offered and c_kept / c_offered >= 0.8:
+        print(f"  {ok}✓{off} Writes packet strengths and growth areas  "
+              f"{dim}({both}/{len(comp_results)} competencies kept both statements; "
+              f"{c_kept}/{c_offered} quotes exact){off}")
+    elif comp_ok > 0:
+        print(f"  {warn}⚠{off} Packet strengths and growth areas only partly survive  "
+              f"{dim}({both}/{len(comp_results)} kept both statements; "
+              f"{c_kept}/{c_offered} quotes exact){off}")
+        print(f"      {dim}Usable, but packets will often say \"Not enough evidence\" or "
+              f"miss a statement the comments support.{off}")
+    else:
+        print(f"  {bad}✗{off} Packet strengths and growth areas: no statement survived  "
+              f"{dim}({c_kept}/{c_offered} quotes exact){off}")
+        print(f"      {dim}Every competency in a packet would read \"Not enough evidence in "
+              f"this review period\".{off}")
+    for r in comp_results:
+        for rejected in r.get("rejected", [])[:2]:
+            print(f"      {dim}{r['id']} paraphrased: {rejected[:110]!r}{off}")
+
     # --- Speed -----------------------------------------------------------
-    times = [r["elapsed"] for r in results if "elapsed" in r]
+    times = [r["elapsed"] for r in results + comp_results if "elapsed" in r]
     if times:
         per_section = sum(times) / len(times)
         full_run = per_section * 21
+        packet = per_section * (21 + 6)
         print(f"  {dim}·{off} {per_section:.1f}s per section  →  about "
-              f"{full_run / 60:.1f} minutes for a full 21-section report")
+              f"{full_run / 60:.1f} minutes for a full 21-section report, "
+              f"{packet / 60:.1f} for an advisor packet")
         if full_run > 900:
             print(f"      {warn}That is slow enough to be awkward in a live meeting.{off}")
 
@@ -293,12 +440,17 @@ async def main_async(model, trials, show_output, use_colour):
         for r in results:
             print(f"\n  {r['id']} narrative:")
             print(f"    {r.get('narrative') or '(discarded)'}")
+        for r in comp_results:
+            for key, text in (r.get("statements") or {}).items():
+                print(f"\n  {r['id']} {key.replace('_', ' ')}:")
+                print(f"    {text or '(dropped)'}")
 
     print()
-    fatal = json_ok < len(results) or sections_ok == 0
+    fatal = (json_ok < len(results) or sections_ok == 0
+             or (comp_results and (comp_json < len(comp_results) or comp_ok == 0)))
     if fatal:
-        print(f"  {bad}Not usable for summaries.{off} Try a different model — and do not "
-              f"relax the")
+        print(f"  {bad}Not usable for summaries or packets.{off} Try a different model — "
+              f"and do not relax the")
         print("  quote validation to accommodate this one; it is what keeps invented")
         print("  evidence out of a resident's record.")
         print()

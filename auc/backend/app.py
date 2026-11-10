@@ -20,9 +20,11 @@ import ccc
 import httpx
 import medhub_api
 import medhub_import
+import packets
 import pdf_export
 import rag_retrieval
 import retrieval_engine
+import review_period
 import summary_builder
 import update_api
 
@@ -179,6 +181,7 @@ def init_db():
         conn.executescript(ccc.SCHEMA_SQL)
         conn.executescript(retrieval_engine.SCHEMA_SQL)
         conn.executescript(medhub_import.SCHEMA_SQL)
+        conn.executescript(packets.SCHEMA_SQL)
         for col_sql in [
             "ALTER TABLE residents ADD COLUMN medical_school TEXT",
             "ALTER TABLE residents ADD COLUMN interests TEXT",
@@ -190,9 +193,23 @@ def init_db():
             # Deactivating an advisor keeps their assignments; deleting one
             # sends their residents back to Unassigned.
             "ALTER TABLE residents ADD COLUMN advisor_id TEXT REFERENCES advisors(id) ON DELETE SET NULL",
-        ] + ccc.COLUMN_MIGRATIONS + ccc.POST_MIGRATION_SQL + (
+            # What a summary covers. All nullable: summaries written before review
+            # periods existed keep every column NULL and still open and export.
+            "ALTER TABLE summaries ADD COLUMN period_start TEXT",
+            "ALTER TABLE summaries ADD COLUMN period_end TEXT",
+            "ALTER TABLE summaries ADD COLUMN period_basis TEXT",
+            "ALTER TABLE summaries ADD COLUMN evidence_scope TEXT",
+            "ALTER TABLE summaries ADD COLUMN n_comments INTEGER",
+            "ALTER TABLE summaries ADD COLUMN n_evaluators INTEGER",
+            "ALTER TABLE summaries ADD COLUMN n_rotations INTEGER",
+            "ALTER TABLE summaries ADD COLUMN medhub_import_id TEXT",
+            "ALTER TABLE summaries ADD COLUMN pgy_year_at_cutoff INTEGER",
+            "ALTER TABLE summaries ADD COLUMN app_version TEXT",
+            "ALTER TABLE summaries ADD COLUMN retrieval_engine TEXT",
+            "ALTER TABLE summaries ADD COLUMN model TEXT",
+        ] + packets.COLUMN_MIGRATIONS + ccc.COLUMN_MIGRATIONS + ccc.POST_MIGRATION_SQL + (
             medhub_import.COLUMN_MIGRATIONS + medhub_import.POST_MIGRATION_SQL
-        ):
+        ) + packets.POST_MIGRATION_SQL:
             try:
                 conn.execute(col_sql)
             except Exception:
@@ -242,6 +259,7 @@ class AdvisorCreate(BaseModel):
 class AdvisorUpdate(BaseModel):
     name: Optional[str] = None
     active: Optional[bool] = None
+    in_study: Optional[bool] = None
 
 class BulkResidentImport(BaseModel):
     residents: List[ResidentCreate]
@@ -301,6 +319,7 @@ ACGME_DOMAINS = [
 async def lifespan(_app: FastAPI):
     """Create or migrate the schema before the first request is served."""
     init_db()
+    packets.recover_interrupted()
     yield
 
 
@@ -319,6 +338,7 @@ ccc.init_ccc(db_connection)
 retrieval_engine.init_retrieval_engine(db_connection)
 medhub_import.init_medhub_import(db_connection, ACGME_DOMAINS)
 app.include_router(auth.router)
+app.include_router(packets.router)
 app.include_router(ccc.router)
 app.include_router(update_api.router)
 app.include_router(medhub_import.router)
@@ -354,10 +374,18 @@ def get_version():
     clone of the repository has no such file, so working from a checkout
     reports "dev" rather than claiming a release it is not.
     """
+    return {"version": app_version()}
+
+
+def app_version() -> str:
+    """auc/VERSION, or "dev" in a clone. Stored with every summary and packet."""
     try:
-        return {"version": VERSION_FILE.read_text(encoding="utf-8").strip() or "dev"}
+        return VERSION_FILE.read_text(encoding="utf-8").strip() or "dev"
     except OSError:
-        return {"version": "dev"}
+        return "dev"
+
+
+packets.init_packets(db_connection, app_version)
 
 # ---------------------------------------------------------------------------
 # Resident endpoints
@@ -444,7 +472,7 @@ def get_resident(resident_id: str):
 def update_resident(resident_id: str, updates: ResidentUpdate):
     fields = []
     values = []
-    changes = updates.dict(exclude_unset=True)
+    changes = updates.model_dump(exclude_unset=True)
     # Stored with its comparison key and checked for clashes, so it is set
     # through the MedHub import's helper rather than as a plain column.
     medhub_name_given = "medhub_name" in changes
@@ -512,7 +540,7 @@ def create_advisor(advisor: AdvisorCreate):
 
 @app.put("/api/advisors/{advisor_id}")
 def update_advisor(advisor_id: str, updates: AdvisorUpdate):
-    changes = updates.dict(exclude_unset=True)
+    changes = updates.model_dump(exclude_unset=True)
     fields = []
     values = []
     if "name" in changes:
@@ -524,6 +552,11 @@ def update_advisor(advisor_id: str, updates: AdvisorUpdate):
     if "active" in changes:
         fields.append("active = ?")
         values.append(1 if changes["active"] else 0)
+    if changes.get("in_study") is not None:
+        # Whether this advisor's advisees take part in the packet study. Outside it,
+        # randomization skips them and their advisees are "No packet".
+        fields.append("in_study = ?")
+        values.append(1 if changes["in_study"] else 0)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     fields.append("updated_at = datetime('now')")
@@ -699,7 +732,7 @@ def create_note(resident_id: str, note: NoteCreate):
 def update_note(note_id: str, updates: NoteUpdate):
     fields = []
     values = []
-    for field, val in updates.dict(exclude_unset=True).items():
+    for field, val in updates.model_dump(exclude_unset=True).items():
         fields.append(f"{field} = ?")
         values.append(val)
     if not fields:
@@ -989,7 +1022,7 @@ async def generate_summary(
 def _medhub_comment_evidence(conn, resident_id: str) -> list:
     """Imported MedHub comments (text only — never blank or N/A), in
     rag_retrieval's {"text", "label"} shape. Scores are deliberately not
-    evidence for summaries."""
+    evidence for summaries. Used by the older /generate-summary endpoint."""
     evidence = []
     for c in medhub_import.resident_comments(conn, resident_id):
         question = c["question"] if len(c["question"]) <= 90 else c["question"][:87] + "..."
@@ -1002,10 +1035,41 @@ def _medhub_comment_evidence(conn, resident_id: str) -> list:
     return evidence
 
 
-def _load_resident_evidence(resident_id: str):
-    """Return (resident_row, resident_label, comments) for summary generation.
+PeriodChoice = Literal["current", "all_time", "custom"]
+ScopeChoice = Literal["all", "medhub_only"]
 
-    comments are in rag_retrieval's {"text", "label"} shape.
+
+def _resolve_period(conn, resident_id, period, cutoff, period_start, period_end):
+    """(period, snapshot_id) for the resident page's period picker.
+
+    current  — the review period ending at `cutoff` (default today).
+    custom   — period_start to period_end, typed by the operator.
+    all_time — no dates: every note and comment, exactly as before review periods.
+    """
+    if period == "all_time":
+        return review_period.all_time_period(), None
+    try:
+        if period == "custom":
+            if not period_start or not period_end:
+                raise review_period.PeriodError("Choose both a start date and an end date.")
+            per = review_period.compute_period(
+                conn, resident_id, period_end,
+                override_start=period_start, override_end=period_end,
+            )
+        else:
+            per = review_period.compute_period(conn, resident_id, cutoff or date.today())
+    except review_period.PeriodError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    snap = review_period.latest_import(conn)
+    return per, (snap["id"] if snap else None)
+
+
+def _load_resident_evidence(resident_id: str, period: str = "all_time", cutoff=None,
+                            period_start=None, period_end=None, scope: str = "all"):
+    """Return (resident_row, resident_label, comments, info) for summary generation.
+
+    comments are in rag_retrieval's {"text", "label"} shape. info describes what
+    they cover: the period, counts, MedHub snapshot and PGY year at the cutoff.
     """
     with db_connection() as conn:
         resident = conn.execute(
@@ -1013,68 +1077,106 @@ def _load_resident_evidence(resident_id: str):
         ).fetchone()
         if not resident:
             raise HTTPException(status_code=404, detail="Resident not found")
+        per, snapshot_id = _resolve_period(
+            conn, resident_id, period, cutoff, period_start, period_end
+        )
+        evidence = review_period.load_evidence(conn, resident_id, per, scope, snapshot_id)
+        if per["period_basis"] == review_period.BASIS_ALL_TIME:
+            pgy = {"pgy_year": resident["pgy_year"], "note": None}
+        else:
+            pgy = review_period.pgy_at(conn, resident, per["period_end"])
 
-        notes = conn.execute(
-            "SELECT * FROM notes WHERE resident_id = ? ORDER BY created_at",
-            (resident_id,)
-        ).fetchall()
-
-        medhub_rows = conn.execute(
-            "SELECT * FROM medhub_evaluations WHERE resident_id = ? ORDER BY evaluation_date",
-            (resident_id,)
-        ).fetchall()
-        medhub_comments = _medhub_comment_evidence(conn, resident_id)
-
-    if not notes and not medhub_comments and not any(r["comments"] for r in medhub_rows):
-        raise HTTPException(status_code=400, detail="No notes or MedHub comments to summarize")
+    if not evidence["comments"]:
+        if per["period_basis"] == review_period.BASIS_ALL_TIME:
+            raise HTTPException(status_code=400, detail="No notes or MedHub comments to summarize")
+        raise HTTPException(status_code=400, detail="No evidence in this review period")
 
     resident_label = (
-        f"{resident['first_name']} {resident['last_name']}, PGY-{resident['pgy_year']}"
+        f"{resident['first_name']} {resident['last_name']}, PGY-{pgy['pgy_year']}"
     )
-    comments = [
-        {
-            "text": n["content"],
-            "label": f"committee note, source={n['source'] or 'unknown'}, "
-                     f"tagged domain={n['acgme_domain'] or 'General'}, {n['created_at']}",
-        }
-        for n in notes
-    ] + [
-        {
-            "text": r["comments"],
-            "label": f"MedHub eval, rotation={r['rotation_name']}, "
-                     f"evaluator={r['evaluator_name']}, score={r['score']}, {r['evaluation_date']}",
-        }
-        for r in medhub_rows if r["comments"]
-    ] + medhub_comments
+    info = {
+        "period": per, "scope": scope, "counts": evidence["counts"],
+        "snapshot_id": snapshot_id, "pgy": pgy,
+    }
+    return resident, resident_label, evidence["comments"], info
 
-    return resident, resident_label, comments
+
+@app.get("/api/residents/{resident_id}/review-period")
+def get_review_period(
+    resident_id: str,
+    period: PeriodChoice = Query("current"),
+    cutoff: Optional[str] = Query(None),
+    period_start: Optional[str] = Query(None),
+    period_end: Optional[str] = Query(None),
+    scope: ScopeChoice = Query("all"),
+):
+    """What a summary would cover, before generating it: the period, the counts of
+    comments, evaluators and rotations, the PGY year at the cutoff, and a warning
+    when the MedHub data may be older than what MedHub shows."""
+    with db_connection() as conn:
+        resident = conn.execute("SELECT * FROM residents WHERE id = ?", (resident_id,)).fetchone()
+        if not resident:
+            raise HTTPException(status_code=404, detail="Resident not found")
+        per, snapshot_id = _resolve_period(
+            conn, resident_id, period, cutoff, period_start, period_end
+        )
+        counts = review_period.load_evidence(conn, resident_id, per, scope, snapshot_id)["counts"]
+        bound = per["period_basis"] != review_period.BASIS_ALL_TIME
+        pgy = (review_period.pgy_at(conn, resident, per["period_end"]) if bound
+               else {"pgy_year": resident["pgy_year"], "note": None})
+        warning = review_period.staleness_warning(conn, per["period_end"]) if bound else None
+    return {
+        **per,
+        "basis_description": review_period.BASIS_DESCRIPTIONS[per["period_basis"]],
+        "evidence_scope": scope,
+        "counts": counts,
+        "pgy_year_at_cutoff": pgy["pgy_year"],
+        "pgy_note": pgy["note"],
+        "staleness_warning": warning,
+        "medhub_import_id": snapshot_id,
+    }
 
 
 @app.post("/api/residents/{resident_id}/summary-stream")
 async def stream_summary(
     resident_id: str,
     model: Optional[str] = Query(None),
+    period: PeriodChoice = Query("current"),
+    cutoff: Optional[str] = Query(None),
+    period_start: Optional[str] = Query(None),
+    period_end: Optional[str] = Query(None),
+    scope: ScopeChoice = Query("all"),
 ):
     """Stream a structured summary over SSE, one sub-competency at a time.
 
     Emits `start` (the full ontology skeleton), one `subcompetency` event per section
     as it completes, and a final `done`. The report row is written on `done`, matching
     the older endpoint's behaviour: an abandoned run leaves nothing behind.
+
+    By default it reads the current review period (ending today) and both MedHub
+    comments and committee notes. period=all_time reads everything, as every summary
+    did before review periods existed.
     """
-    _resident, resident_label, comments = _load_resident_evidence(resident_id)
+    _resident, resident_label, comments, info = _load_resident_evidence(
+        resident_id, period, cutoff, period_start, period_end, scope
+    )
     engine = retrieval_engine.get_active()
+    version = app_version()
+    bound = info["period"]["period_basis"] != review_period.BASIS_ALL_TIME
+    metadata = review_period.report_metadata(info, version, engine) if bound else None
 
     async def event_stream():
         try:
             async for event, payload in summary_builder.generate_report(
-                resident_id, resident_label, comments, model=model, engine=engine
+                resident_id, resident_label, comments, model=model, engine=engine,
+                metadata=metadata,
             ):
                 if event == "done":
                     report = payload.pop("report")
                     with db_connection() as conn:
-                        conn.execute(
-                            "INSERT INTO summaries (id, resident_id, ai_draft) VALUES (?, ?, ?)",
-                            (payload["summary_id"], resident_id, json.dumps(report)),
+                        review_period.insert_summary(
+                            conn, payload["summary_id"], resident_id, report, info,
+                            version, engine,
                         )
                 yield summary_builder.sse(event, payload)
         except Exception as e:

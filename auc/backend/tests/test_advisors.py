@@ -125,7 +125,8 @@ def test_the_advisor_never_reaches_summary_generation(logged_in, app_module, mon
 
     seen = []
 
-    async def recording_report(resident_id, resident_label, comments, model=None, *, engine):
+    async def recording_report(resident_id, resident_label, comments, model=None, *, engine,
+                               **_ignored):
         seen.append((resident_label, comments))
         yield "done", {"summary_id": "s1", "report": {}}
 

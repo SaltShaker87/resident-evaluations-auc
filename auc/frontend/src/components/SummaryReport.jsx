@@ -23,7 +23,7 @@ function EmptyState({ status }) {
     return (
       <div className="subcomp-card__empty">
         <MinusCircle size={14} />
-        <span>No evidence this cycle</span>
+        <span>No evidence in this review period</span>
       </div>
     );
   }
@@ -126,6 +126,44 @@ function SubcompetencyCard({ section, editable, onChange }) {
   );
 }
 
+function formatDay(iso) {
+  if (!iso) return '';
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+// What a v2 report covers. A v1 report (no period) shows nothing here, as before.
+function ReportPeriod({ report }) {
+  const period = report?.period;
+  if (!period) return null;
+  const counts = report.counts || {};
+  const scope = report.evidence_scope === 'medhub_only'
+    ? 'MedHub comments only' : 'MedHub comments and committee notes';
+  return (
+    <div className="report-period">
+      <div>
+        <strong>{formatDay(period.start)} to {formatDay(period.end)}</strong>
+        {period.basis_description ? ` · ${period.basis_description}` : ''}
+      </div>
+      <div className="report-period__counts">
+        {plural(counts.n_comments ?? 0, 'comment')} from {plural(counts.n_evaluators ?? 0, 'evaluator')}
+        {' across '}{plural(counts.n_rotations ?? 0, 'rotation')} · {scope}
+        {report.pgy_year_at_cutoff ? ` · PGY-${report.pgy_year_at_cutoff} on the last day` : ''}
+      </div>
+      {report.thin_evidence && (
+        <div className="report-period__thin">
+          <AlertCircle size={13} /> Few evaluations were available for this period. Treat this
+          summary with caution.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SummaryReport({ report, editable = false, onChange }) {
   const sections = report?.sections || [];
   if (sections.length === 0) return null;
@@ -152,6 +190,7 @@ export default function SummaryReport({ report, editable = false, onChange }) {
 
   return (
     <div className="summary-report">
+      <ReportPeriod report={report} />
       {domainCodes.map((code) => {
         const group = byDomain.get(code);
         return (

@@ -182,7 +182,8 @@ that session and resident.
 
 ## Exports
 
-Three CSVs, from the **Study Data** page in the header. Each covers all sessions to date.
+Four CSVs, from the **Study Data** page in the header. Each covers all sessions to date.
+The fourth, `ccc-packets.csv`, is described under "Advisor packets" below.
 Files are UTF-8 with a BOM so Excel opens them correctly, and are named
 `ccc-<export>-<today>.csv`.
 
@@ -193,7 +194,7 @@ not blank. With it on, they are **appended after** the coded columns, so the cod
 are always in the same positions.
 
 The columns this governs: `room_raised_notes`, `pushback_note`, `closing_notes`, `detail`,
-`item_text`, `owner`.
+`item_text`, `owner`, and in `ccc-packets.csv` `group_change_reason` and `withheld_reason`.
 
 Consequence worth knowing: the two variants have different column sets, so an analysis
 script has to tolerate both (read by column name, not position). Free text is where
@@ -322,6 +323,235 @@ no names either. Includes voided contributions (with their `voided` flag), unlik
 
 ---
 
+## Advisor packets
+
+The study's second phase. Before filling in the Advisee Report Out Form, each presenting
+advisor receives an AI generated **packet** about each advisee, built from that advisee's
+MedHub comments in one **review period**. The **Packets** page (in the header) builds them,
+assigns study groups, and downloads them. AUC sends nothing to anyone: the operator hands
+the files out.
+
+### Review periods
+
+A review period is `[period_start, period_end]` for one resident. `period_end` is the
+**cutoff date**, the day the packet is built: by default `AUC_PACKET_LEAD_DAYS` (7) days
+before the meeting, editable per meeting. `period_start`, first rule that applies
+(`period_basis`):
+
+| `period_basis` | Start |
+|---|---|
+| `override` | Typed by the operator for this resident, before generating. Printed on the packet. |
+| `previous_packet` | The day after the cutoff of this resident's previous packet: the latest one from an earlier meeting that was not withheld. |
+| `last_review` | The day after the last CCC meeting, in the cutoff's academic year, where the resident was actually discussed (a `touched` log, the same rule as `ccc-resident-sessions.csv`). Decided 2026-11-10: a first packet covers only what is new since the autumn review, not the whole year again. |
+| `academic_year_start` | The most recent 23 June (`AUC_ACADEMIC_YEAR_START`) on or before the cutoff. |
+| `all_time` | Resident page only: no dates, everything, exactly as summaries worked before review periods. |
+
+The academic year starts on 23 June, but attendings complete evaluations weekly, so the
+first evaluations of a year never arrive before 1 July. **An empty first week is expected,
+not a fault.**
+
+What is in a period:
+
+- **MedHub comments and ratings**: `rotation_end` inside the period, both ends inclusive.
+- **The MedHub snapshot**: only answers first imported at or before the newest import at
+  generation time (`medhub_import_id`). A later import never changes what an earlier packet
+  says it was based on. Before generating, the app warns if that import is more than
+  `AUC_MEDHUB_STALE_DAYS` (3) days older than the cutoff.
+- **Late arrivals**: a comment whose rotation ended before `period_start` (in the same
+  academic year) but that was first imported after the previous packet was built, or after
+  the last review meeting. Without this, an evaluation submitted after one packet's cutoff
+  for a rotation inside its period would fall between packets and never appear in either.
+  Decided 2026-11-10. Counted in `n_late` and labelled on the packet.
+- **The older MedHub table** (`medhub_evaluations`): `evaluation_date` inside the period,
+  unless the same comment text for the same resident already arrives from `medhub_answers`.
+- **Committee notes**: never in a packet. Packets use evidence scope `medhub_only`, because
+  the advisor form asks specifically about MedHub evaluations. The resident page can also
+  use `all` (MedHub comments plus notes created inside the period).
+
+The PGY year printed is the one **at the cutoff date**: read from the first advancement
+snapshot taken after the cutoff, else the current value; with neither a snapshot nor a
+start date to go on, the current value with a printed note.
+
+The model reads comment text only. It is never given a date, and never asked about trends.
+
+### What a packet contains
+
+1. **Header**: resident, PGY year at the cutoff, advisor, meeting, review period, cutoff,
+   how the period was chosen, counts of comments, evaluators and rotations, and "AI generated
+   draft. Not reviewed or edited. Every quotation was checked word for word against the
+   source evaluations." Below `AUC_PACKET_THIN_EVIDENCE` (5) comments: "Few evaluations were
+   available for this period. Treat this summary with caution."
+2. **The six competencies**: for each, a count of MedHub milestone ratings in the period
+   under MedHub's own labels (Conditional on improvement, Intern, Junior resident, Senior
+   resident, Aspirational, Unable to assess; counts only, no averages), then **Strengths** and
+   **Growth areas**, each backed by verbatim quotations with their source (evaluator names
+   kept: advisors see them in MedHub). One model call per competency, reading only the
+   comments routed to that competency's sub-competencies; a statement is shown only if at
+   least one of its quotations is found word for word, otherwise it is dropped and logged to
+   `summary_validation.log`, and a competency with nothing left reads "Not enough evidence in
+   this review period".
+3. **Previously**: the period of the previous packet and the first sentence of each
+   statement it made. Read from that packet; old comments are never summarized again.
+4. **Appendix**: the 21 sub-competency sections. Suggested levels are printed only with
+   `AUC_PACKET_SHOW_LEVELS=1` (default off: printed levels would anchor the advisor's own
+   ratings, which is what the study measures). The app always shows them.
+5. **Footer on every page**: period, cutoff, packet id, packet format version, app version,
+   model, page number. **Never the study code.**
+
+A packet does not need the summary approved. **Withhold** marks a packet as not to be given
+out, with a one-line reason; it is then left out of every zip (it can still be opened on its
+own). The approved-summary PDF on the resident page is unchanged.
+
+### Study groups and randomization
+
+Each resident at a meeting has a group: `packet_first`, `packet_delayed` or `none`. The
+group only records when the advisor is meant to receive the packet; packets can be generated
+for everyone.
+
+- **Randomize within each advisor** (once per meeting). The app draws one seed from the
+  operating system's secure random source (`secrets.randbits(64)`) and stores it; nobody types
+  or chooses it. For each presenting advisor in the study separately: sort their advisees by
+  study code, shuffle with Python's `random.Random("<seed>:<advisor_code>")`, the first half
+  are `packet_first` and the rest `packet_delayed`; with an odd number, a coin flip from the
+  same generator decides which group gets the extra one. The same seed and the same residents
+  always give the same groups, so any assignment can be re-checked
+  (`packets.split_advisees`).
+- **No re-roll.** Once a meeting is randomized the button is disabled and the server refuses.
+- **Changed by hand afterwards**: needs a one-line reason. `study_group` changes,
+  `randomized_group` never does, and the reason and time are recorded.
+- **Advisors outside the study** (`advisors.in_study = 0`, set on the advisors card in
+  Settings) are skipped; their advisees get `none`.
+- **A resident added late** (after their advisor was randomized): a coin flip,
+  `random.Random("<new seed>:<study_code>")`, from a new stored seed. Nobody else changes.
+- **An advisor added late** (after the meeting was randomized): their own one-time even
+  split, as above, from a new stored seed. Decided 2026-11-10.
+- **Moving an advisor** to another meeting date: every advisee keeps their group; not a group
+  change, no reason needed; the old and new dates are recorded. Their packets must be
+  generated again for the new cutoff.
+- **Optional.** Every group can be set by hand instead. Rows set by hand carry no seed and no
+  `randomized_group`, so the data shows which assignments were random. Randomizing is refused
+  while any in-study row has a group set by hand.
+- The operator does not set the presentation schedule, and randomization never decides who
+  presents or when.
+
+### Tables
+
+Advisors appear in study data only as `advisor_code` (`A01`, `A02`, …), minted like study
+codes on first use and stored on the advisor.
+
+#### `packet_meetings` — one row per meeting date
+
+| Column | Notes |
+|---|---|
+| `id` | 8-char text id |
+| `meeting_date` | `YYYY-MM-DD`, unique |
+| `cutoff_date` | Default 7 days before |
+| `randomization_seed` | Drawn by the app; NULL until randomized |
+| `randomized_at` | Set once |
+
+#### `packet_presenters` — advisors presenting at a meeting
+
+`meeting_id`, `advisor_id` (`ON DELETE SET NULL`), `advisor_code`, `randomization_seed`
+(the seed this advisor's split used; NULL outside the study), `randomized_at`.
+
+#### `packet_assignments` — one row per resident per meeting
+
+| Column | Notes |
+|---|---|
+| `resident_id` | `ON DELETE SET NULL` |
+| `study_code`, `advisor_id`, `advisor_code` | Snapshots |
+| `study_group` | The group in force now |
+| `randomized_group` | What randomization gave. Never overwritten. NULL when set by hand |
+| `randomization_seed` | NULL when set by hand |
+| `randomized_at` | When randomization (or "outside the study") set it |
+| `added_late` | 0/1 |
+| `group_change_reason`, `group_changed_at` | Only for a change by hand after randomization |
+| `override_start`, `override_end` | Dates typed for this resident |
+| `status`, `status_detail` | `idle` \| `queued` \| `running` \| `done` \| `failed`, and why |
+| `packet_id` | The packet in force for this resident at this meeting |
+| `moved_from_meeting_date`, `moved_at` | Set when the advisor was moved here |
+
+#### `packets` — one row per generated packet
+
+| Column | Notes |
+|---|---|
+| `id` | 8-char text id, printed in the footer |
+| `summary_id` | The `summaries` row it was rendered from (an unapproved v2 draft) |
+| `resident_id` | `ON DELETE SET NULL` |
+| `study_code` | Snapshot |
+| `advisor_id`, `advisor_code`, `advisor_name` | `advisor_name` is printed on the packet and never exported |
+| `meeting_date`, `cutoff_date` | |
+| `study_group`, `randomized_group`, `randomization_seed`, `group_change_reason`, `group_changed_at` | As on the assignment, kept in step with it |
+| `period_start`, `period_end`, `period_basis` | |
+| `n_comments`, `n_evaluators`, `n_rotations`, `n_late` | What went in |
+| `medhub_import_id`, `pgy_year_at_cutoff` | Snapshots |
+| `model`, `app_version`, `retrieval_engine`, `packet_format_version`, `show_levels` | |
+| `generated_at`, `first_downloaded_at` | |
+| `withheld`, `withheld_reason`, `withheld_at` | |
+
+#### `packet_events` — the audit trail
+
+One row per thing that happened, in order: `randomized`, `meeting_randomized`, `group_set`,
+`group_changed`, `moved`, `presenter_added`, `presenter_removed`, `resident_added`,
+`period_override`, `cutoff_changed`, `generated`, `withheld`, with old and new values and
+the reason.
+
+#### Changes to existing tables
+
+- `advisors`: `in_study` (default 1) and `advisor_code`.
+- `summaries`: `period_start`, `period_end`, `period_basis`, `evidence_scope`, `n_comments`,
+  `n_evaluators`, `n_rotations`, `medhub_import_id`, `pgy_year_at_cutoff`, `app_version`,
+  `retrieval_engine`, `model`. All nullable; older summaries keep NULLs and still open and
+  export. A summary with a period is stored as report schema `auc.summary.v2`, which carries
+  the same facts inside the report; "All time" summaries stay `auc.summary.v1`.
+
+No `ccc_*` table or existing CSV column changes.
+
+### `ccc-packets.csv`
+
+One row per generated packet, keyed by `study_code` and `advisor_code`. The same rules as
+the other exports: no names, no resident or advisor ids, enforced by the forbidden-column
+guard.
+
+| Column | Meaning |
+|---|---|
+| `packet_id` | Matches the packet's footer |
+| `study_code` | |
+| `advisor_code` | `A01`, … |
+| `meeting_date`, `cutoff_date` | |
+| `study_group` | Group in force now |
+| `randomized_group` | What randomization gave; blank when set by hand |
+| `randomization_seed` | Blank when set by hand |
+| `group_changed` | 0/1: changed by hand after randomization |
+| `group_changed_at` | |
+| `added_late` | 0/1 |
+| `moved_from_meeting_date` | Blank unless the advisor was moved |
+| `period_start`, `period_end`, `period_basis` | |
+| `n_comments`, `n_evaluators`, `n_rotations`, `n_late` | |
+| `pgy_year_at_cutoff` | |
+| `model`, `app_version`, `retrieval_engine`, `packet_format_version` | |
+| `show_levels` | 0/1: suggested levels printed in the appendix |
+| `generated_at`, `first_downloaded_at` | |
+| `withheld` | 0/1 |
+| `is_current` | 0/1. **Filter on this** unless you want superseded packets: a packet generated again replaces the earlier one for that resident and meeting |
+| `group_change_reason` | *(include_text)* |
+| `withheld_reason` | *(include_text)* |
+
+A resident whose packet was never generated has no row here; their group is only in
+`packet_assignments`.
+
+### Freezing the packet for the study
+
+**During the randomized phase (January to June), the packet format version, the model and
+the retrieval engine must not change.** If one has to, record the date and the old and new
+value with the study notes. The packet format version (`PACKET_FORMAT_VERSION` in
+`backend/packets.py`, printed in every footer) is bumped on any change to packet layout,
+prompts or generation settings. The settings that change a packet are
+`AUC_PACKET_LEAD_DAYS`, `AUC_ACADEMIC_YEAR_START`, `AUC_PACKET_THIN_EVIDENCE` and
+`AUC_PACKET_SHOW_LEVELS`.
+
+---
+
 ## Notes for whoever analyses this
 
 - **`referenced_written_eval` and `contribution_type='eval_content'` are not independent.**
@@ -348,3 +578,7 @@ no names either. Includes voided contributions (with their `voided` flag), unlik
 | `backend/ccc_export.py` | CSV and JSON builders, and the forbidden-column guard |
 | `frontend/src/ccc/` | Drawer, banner, pill, offline write queue, retrieval clock |
 | `frontend/src/pages/StudyData.jsx` | The export page |
+| `backend/review_period.py` | Review periods, the MedHub snapshot, late arrivals, PGY at the cutoff |
+| `backend/packets.py` | Packet tables, `/api/packets`, randomization, the generation queue, downloads |
+| `backend/pdf_export.py` | The packet PDF (`render_packet_pdf`) |
+| `frontend/src/pages/Packets.jsx` | The Packets page |

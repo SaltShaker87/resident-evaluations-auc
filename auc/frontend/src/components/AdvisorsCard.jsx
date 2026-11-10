@@ -53,7 +53,8 @@ export default function AdvisorsCard() {
       <div className="settings-row__desc">
         Assign one to each resident from their page. Deactivating an advisor keeps their
         current assignments; deleting one sets those residents to Unassigned. Advisors are
-        never used in AI summaries.
+        never used in AI summaries. An advisor outside the packet study is skipped when a
+        meeting is randomized, and their advisees get no packet.
       </div>
 
       <form className="settings-row" onSubmit={handleAdd}>
@@ -98,8 +99,22 @@ export default function AdvisorsCard() {
             {!a.active && (
               <span className="tag tag--status tag--status-departed" style={{ marginLeft: '0.5rem' }}>Inactive</span>
             )}
+            {!a.in_study && (
+              <span className="tag tag--status tag--status-departed" style={{ marginLeft: '0.5rem' }}>Outside study</span>
+            )}
+            {a.advisor_code && (
+              <span className="text-sm text-muted" style={{ marginLeft: '0.5rem' }}>{a.advisor_code}</span>
+            )}
           </div>
           <div className="settings-row__control">
+            <label className="ccc-switch" title="Whether this advisor's advisees take part in the packet study">
+              <input
+                type="checkbox"
+                checked={!!a.in_study}
+                onChange={(e) => run(() => updateAdvisor(a.id, { in_study: e.target.checked }))}
+              />
+              <span>In study</span>
+            </label>
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => { setEditingId(a.id); setEditName(a.name); }}

@@ -9,7 +9,8 @@
 # Any model in `ollama list` can be picked in Settings, but only some of them
 # work. The generator needs two behaviours no model card will tell you about:
 # JSON-constrained output, and quoting character-for-character. This runs the
-# real code path against made-up committee comments and reports on both.
+# real code path against made-up committee comments and reports on both, for
+# the sub-competency sections and for the advisor packet's six competencies.
 #
 # Run it before trusting a new model with a meeting — in particular after
 # moving to a bigger model on the Spark.
