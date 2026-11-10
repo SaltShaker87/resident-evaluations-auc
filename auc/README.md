@@ -256,8 +256,11 @@ bash auc/check-model.sh nemotron:latest
 
 It runs three real sub-competency generations through the app's own prompt,
 parser and validator, reports on both requirements, times a section and
-extrapolates to a full 21-section run. It exits non-zero if the model cannot
-be used. Nothing is written to the database or the validation log.
+extrapolates to a full 21-section run. It also runs two of an advisor packet's
+competency generations (strengths and growth areas, a different reply shape)
+and reports whether their statements survive the same quote check. It exits
+non-zero if the model cannot be used for either. Nothing is written to the
+database or the validation log.
 
 Then confirm on a real resident with real notes before a meeting depends on it.
 
