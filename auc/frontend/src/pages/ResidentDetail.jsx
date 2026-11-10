@@ -9,6 +9,7 @@ import {
   getNotes, createNote, updateNote, deleteNote,
   getResidentFollowups, createFollowup, resolveFollowup, unresolveFollowup, deleteFollowup,
   getSummaries, generateSummaryStream, approveSummary, deleteSummary, getOllamaModels,
+  getReviewPeriod,
   exportSummaryPdf, getAdvisors, getResidentMedhub, removeMedhubAlias,
 } from '../api';
 import Avatar from '../components/Avatar';
@@ -338,14 +339,138 @@ const DRAFT_DISCLAIMER =
   'not final determinations.';
 
 // Approved summaries are stored as JSON now; anything older is a markdown blob.
+// v2 is v1 plus the review period it covers.
+const REPORT_SCHEMAS = ['auc.summary.v1', 'auc.summary.v2'];
+
 function parseStructuredSummary(text) {
   if (!text || !text.trimStart().startsWith('{')) return null;
   try {
     const parsed = JSON.parse(text);
-    return parsed?.schema === 'auc.summary.v1' ? parsed : null;
+    return REPORT_SCHEMAS.includes(parsed?.schema) ? parsed : null;
   } catch (_e) {
     return null;
   }
+}
+
+// Today on this computer's calendar (toISOString would give the UTC date, which is
+// tomorrow on an American evening).
+function localDay() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDay(iso) {
+  if (!iso) return '';
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+// The period picker: what the next summary will cover, with the counts and warnings
+// the server works out for it. Nothing is generated until Generate is pressed.
+function PeriodPicker({ choice, onChange, preview, error, disabled }) {
+  const set = (fields) => onChange({ ...choice, ...fields });
+  const counts = preview?.counts;
+  return (
+    <div className="period-picker">
+      <div className="period-picker__controls">
+        <label className="period-picker__field">
+          <span>Covering</span>
+          <select
+            className="form-select"
+            value={choice.period}
+            onChange={(e) => set({ period: e.target.value })}
+            disabled={disabled}
+          >
+            <option value="current">Current review period</option>
+            <option value="custom">Dates I choose</option>
+            <option value="all_time">All time</option>
+          </select>
+        </label>
+        {choice.period === 'current' && (
+          <label className="period-picker__field">
+            <span>Up to</span>
+            <input
+              type="date"
+              className="form-input"
+              value={choice.cutoff}
+              onChange={(e) => set({ cutoff: e.target.value })}
+              disabled={disabled}
+            />
+          </label>
+        )}
+        {choice.period === 'custom' && (
+          <>
+            <label className="period-picker__field">
+              <span>From</span>
+              <input
+                type="date"
+                className="form-input"
+                value={choice.periodStart}
+                onChange={(e) => set({ periodStart: e.target.value })}
+                disabled={disabled}
+              />
+            </label>
+            <label className="period-picker__field">
+              <span>To</span>
+              <input
+                type="date"
+                className="form-input"
+                value={choice.periodEnd}
+                onChange={(e) => set({ periodEnd: e.target.value })}
+                disabled={disabled}
+              />
+            </label>
+          </>
+        )}
+        <label className="period-picker__field">
+          <span>Evidence</span>
+          <select
+            className="form-select"
+            value={choice.scope}
+            onChange={(e) => set({ scope: e.target.value })}
+            disabled={disabled}
+          >
+            <option value="all">MedHub comments and committee notes</option>
+            <option value="medhub_only">MedHub comments only</option>
+          </select>
+        </label>
+      </div>
+
+      {error && <div className="period-picker__note period-picker__note--error">{error}</div>}
+      {preview && !error && (
+        <div className="period-picker__summary">
+          {preview.period_basis === 'all_time' ? (
+            <span>Everything ever recorded, with no date limit.</span>
+          ) : (
+            <span>
+              <strong>{formatDay(preview.period_start)} to {formatDay(preview.period_end)}</strong>
+              {' · '}{preview.basis_description}
+              {' · '}PGY-{preview.pgy_year_at_cutoff} on the last day
+            </span>
+          )}
+          {counts && (
+            <span>
+              {plural(counts.n_comments, 'comment')}
+              {counts.n_notes ? ` (${plural(counts.n_notes, 'committee note')})` : ''}
+              {' from '}{plural(counts.n_evaluators, 'evaluator')}
+              {' across '}{plural(counts.n_rotations, 'rotation')}
+              {counts.n_late ? `, ${counts.n_late} of them evaluated late` : ''}
+            </span>
+          )}
+        </div>
+      )}
+      {preview?.pgy_note && <div className="period-picker__note">{preview.pgy_note}</div>}
+      {preview?.staleness_warning && (
+        <div className="alert alert--warning period-picker__alert">
+          <AlertCircle size={15} /> {preview.staleness_warning}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Parse an SSE frame ("event: name\ndata: {...}") into { event, data }.
@@ -372,6 +497,24 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [ollamaError, setOllamaError] = useState('');
+  const [choice, setChoice] = useState(() => ({
+    period: 'current', cutoff: localDay(), periodStart: '', periodEnd: localDay(), scope: 'all',
+  }));
+  const [preview, setPreview] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+
+  useEffect(() => {
+    if (choice.period === 'custom' && (!choice.periodStart || !choice.periodEnd)) {
+      setPreview(null);
+      setPreviewError('Choose both dates.');
+      return undefined;
+    }
+    let cancelled = false;
+    getReviewPeriod(residentId, choice)
+      .then((result) => { if (!cancelled) { setPreview(result); setPreviewError(''); } })
+      .catch((err) => { if (!cancelled) { setPreview(null); setPreviewError(err.message); } });
+    return () => { cancelled = true; };
+  }, [residentId, choice, evidenceCount]);
 
   useEffect(() => {
     getOllamaModels().then((result) => {
@@ -401,7 +544,7 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
     resetDraft();
 
     try {
-      const response = await generateSummaryStream(residentId, selectedModel || null);
+      const response = await generateSummaryStream(residentId, selectedModel || null, choice);
       if (!response.ok) {
         const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
         throw new Error(err.detail || `HTTP ${response.status}`);
@@ -421,8 +564,11 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
         if (event === 'start') {
           // The skeleton comes from the backend's ontology, so all 21 cards render
           // straight away and fill in place as results arrive.
+          // metadata (v2 only) says what the summary covers: its review period and
+          // counts. It is kept so the approved copy still says so.
           setReport({
-            schema: 'auc.summary.v1',
+            ...(data.metadata || {}),
+            schema: data.schema || 'auc.summary.v1',
             resident: data.resident,
             model: data.model,
             sections: data.sections,
@@ -503,7 +649,10 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
           <button
             className="btn btn--primary btn--sm"
             onClick={handleGenerate}
-            disabled={generating || evidenceCount === 0 || !!ollamaError}
+            disabled={
+              generating || evidenceCount === 0 || !!ollamaError || !!previewError
+              || preview?.counts?.n_comments === 0
+            }
           >
             {generating ? (
               <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</>
@@ -523,6 +672,21 @@ function SummarySection({ residentId, summaries, evidenceCount, onChanged, showT
       {evidenceCount === 0 && !ollamaError && (
         <div className="text-sm text-muted" style={{ padding: '0.5rem 0' }}>
           Add a note or import MedHub comments before generating a summary.
+        </div>
+      )}
+
+      {evidenceCount > 0 && (
+        <PeriodPicker
+          choice={choice}
+          onChange={setChoice}
+          preview={preview}
+          error={previewError}
+          disabled={generating}
+        />
+      )}
+      {evidenceCount > 0 && preview?.counts?.n_comments === 0 && !previewError && (
+        <div className="text-sm text-muted" style={{ padding: '0.25rem 0 0.5rem' }}>
+          No evidence in this review period. Choose other dates, or All time.
         </div>
       )}
 

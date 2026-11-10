@@ -127,6 +127,39 @@ RERANK_CANDIDATES: int = int(os.environ.get("AUC_RERANK_CANDIDATES", "10"))
 RETRIEVAL_ENGINE_DEFAULT: str = os.environ.get("AUC_RETRIEVAL_ENGINE_DEFAULT", "")
 
 # ---------------------------------------------------------------------------
+# Review periods and advisor packets
+#
+# A review period is the date range one summary or packet covers. See CCC.md,
+# "Advisor packets", for the rules. These change what a packet contains, so
+# during the randomized phase of the CCC study they must not change at all;
+# CCC.md says what to record if one has to.
+#
+# AUC_PACKET_LEAD_DAYS    : the cutoff date is this many days before the
+#                           meeting. Default 7: advisors prepare the night
+#                           before, and the packet must be ready by then.
+# AUC_ACADEMIC_YEAR_START : month and day the academic year starts, MM-DD.
+#                           Default 06-23. Evaluations of a new year do not
+#                           arrive before 1 July, so the first week of a
+#                           year is normally empty.
+# AUC_PACKET_THIN_EVIDENCE: a packet with fewer comments than this prints a
+#                           caution. Default 5.
+# AUC_PACKET_SHOW_LEVELS  : 1 to print the AI's suggested 1 to 5 levels in the
+#                           packet's appendix. Default 0: printed levels would
+#                           anchor the advisor's own ratings, which is what the
+#                           study measures. The app always shows them.
+# AUC_MEDHUB_STALE_DAYS   : warn before generating when the newest MedHub
+#                           import is more than this many days older than the
+#                           cutoff. Default 3.
+# ---------------------------------------------------------------------------
+PACKET_LEAD_DAYS: int = int(os.environ.get("AUC_PACKET_LEAD_DAYS", "7"))
+ACADEMIC_YEAR_START: str = os.environ.get("AUC_ACADEMIC_YEAR_START", "06-23")
+PACKET_THIN_EVIDENCE: int = int(os.environ.get("AUC_PACKET_THIN_EVIDENCE", "5"))
+PACKET_SHOW_LEVELS: bool = os.environ.get("AUC_PACKET_SHOW_LEVELS", "0").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+MEDHUB_STALE_DAYS: int = int(os.environ.get("AUC_MEDHUB_STALE_DAYS", "3"))
+
+# ---------------------------------------------------------------------------
 # MedHub API — fill these in once API documentation is obtained.
 # Set via environment variables or edit the defaults below.
 #

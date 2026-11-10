@@ -697,6 +697,14 @@ def export_contributions(include_text: bool = False):
     return ccc_export.csv_response("ccc-contributions", header, rows)
 
 
+@router.get("/export/packets.csv")
+def export_packets(include_text: bool = False):
+    """One row per generated advisor packet. Keyed by study_code and advisor_code."""
+    with _db_connection() as conn:
+        header, rows = ccc_export.packets(conn, include_text)
+    return ccc_export.csv_response("ccc-packets", header, rows)
+
+
 @router.get("/export/action-items.csv")
 def export_action_items(include_text: bool = False, include_unchecked: bool = False):
     with _db_connection() as conn:

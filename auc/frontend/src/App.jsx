@@ -1,12 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, NavLink, Link } from 'react-router-dom';
-import { Users, ClipboardList, Upload, FlaskConical, Settings as SettingsIcon, LogOut } from 'lucide-react';
+import {
+  Users, ClipboardList, Upload, FlaskConical, FileStack, Settings as SettingsIcon, LogOut,
+} from 'lucide-react';
 import ResidentList from './pages/ResidentList';
 import ResidentDetail from './pages/ResidentDetail';
 import FollowupDashboard from './pages/FollowupDashboard';
 import MedhubImport from './pages/MedhubImport';
 import SettingsPage from './pages/Settings';
 import StudyData from './pages/StudyData';
+import Packets from './pages/Packets';
 import Login from './pages/Login';
 import { CccProvider } from './ccc/CccContext';
 import CccBanner from './ccc/CccBanner';
@@ -129,6 +132,9 @@ export default function App() {
           <NavLink to="/study" className={({ isActive }) => isActive ? 'active' : ''}>
             <FlaskConical size={16} /> Study Data
           </NavLink>
+          <NavLink to="/packets" className={({ isActive }) => isActive ? 'active' : ''}>
+            <FileStack size={16} /> Packets
+          </NavLink>
           <NavLink
             to={updateAvailable ? '/settings/updates' : '/settings'}
             className={({ isActive }) => isActive ? 'active' : ''}
@@ -151,6 +157,7 @@ export default function App() {
           <Route path="/followups" element={<FollowupDashboard showToast={showToast} />} />
           <Route path="/medhub" element={<MedhubImport showToast={showToast} />} />
           <Route path="/study" element={<StudyData showToast={showToast} />} />
+          <Route path="/packets" element={<Packets showToast={showToast} />} />
           <Route
             path="/settings/:section?"
             element={(

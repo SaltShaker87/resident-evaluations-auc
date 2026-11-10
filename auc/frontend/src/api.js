@@ -146,12 +146,31 @@ export const generateSummary = (residentId, model = null) => {
   return fetch(`${BASE}/residents/${residentId}/generate-summary${qs}`, { method: 'POST' });
 };
 
+// What a summary would cover. `choice` is { period: 'current' | 'all_time' | 'custom',
+// cutoff, periodStart, periodEnd, scope: 'all' | 'medhub_only' }.
+function periodParams(choice = {}) {
+  const params = new URLSearchParams();
+  if (choice.period) params.set('period', choice.period);
+  if (choice.cutoff) params.set('cutoff', choice.cutoff);
+  if (choice.periodStart) params.set('period_start', choice.periodStart);
+  if (choice.periodEnd) params.set('period_end', choice.periodEnd);
+  if (choice.scope) params.set('scope', choice.scope);
+  return params;
+}
+
+export const getReviewPeriod = (residentId, choice) =>
+  request(`/residents/${residentId}/review-period?${periodParams(choice).toString()}`);
+
 // Returns raw Response for streaming — caller reads body as an SSE stream.
 // EventSource is deliberately not used: it cannot POST, and its auto-reconnect
 // would silently re-run the whole generation every time the stream closes.
-export const generateSummaryStream = (residentId, model = null) => {
-  const qs = model ? `?model=${encodeURIComponent(model)}` : '';
-  return fetch(`${BASE}/residents/${residentId}/summary-stream${qs}`, { method: 'POST' });
+export const generateSummaryStream = (residentId, model = null, choice = {}) => {
+  const params = periodParams(choice);
+  if (model) params.set('model', model);
+  const qs = params.toString();
+  return fetch(`${BASE}/residents/${residentId}/summary-stream${qs ? `?${qs}` : ''}`, {
+    method: 'POST',
+  });
 };
 
 export const approveSummary = (summaryId, approvedText) =>
@@ -316,4 +335,75 @@ export const downloadCccCsv = (which, includeText = false) =>
   downloadFile(
     `/ccc/export/${which}.csv?include_text=${includeText ? 'true' : 'false'}`,
     `ccc-${which}.csv`,
+  );
+
+// ---------------------------------------------------------------------------
+// Advisor packets (the CCC study's second phase). See CCC.md, "Advisor packets".
+// ---------------------------------------------------------------------------
+
+export const getPacketDefaults = (meetingDate) =>
+  request(`/packets/defaults${meetingDate ? `?meeting_date=${meetingDate}` : ''}`);
+
+export const getPacketMeetings = () => request('/packets/meetings');
+
+export const openPacketMeeting = (meetingDate, cutoffDate = null) =>
+  request('/packets/meetings', {
+    method: 'POST',
+    body: JSON.stringify({ meeting_date: meetingDate, cutoff_date: cutoffDate }),
+  });
+
+export const getPacketMeeting = (meetingId) => request(`/packets/meetings/${meetingId}`);
+
+export const setPacketCutoff = (meetingId, cutoffDate) =>
+  request(`/packets/meetings/${meetingId}`, {
+    method: 'PUT', body: JSON.stringify({ cutoff_date: cutoffDate }),
+  });
+
+export const addPacketPresenters = (meetingId, advisorIds) =>
+  request(`/packets/meetings/${meetingId}/presenters`, {
+    method: 'POST', body: JSON.stringify({ advisor_ids: advisorIds }),
+  });
+
+export const removePacketPresenter = (meetingId, advisorId) =>
+  request(`/packets/meetings/${meetingId}/presenters/${advisorId}`, { method: 'DELETE' });
+
+export const movePacketPresenter = (meetingId, advisorId, meetingDate) =>
+  request(`/packets/meetings/${meetingId}/presenters/${advisorId}/move`, {
+    method: 'POST', body: JSON.stringify({ meeting_date: meetingDate }),
+  });
+
+export const addPacketResident = (meetingId, residentId) =>
+  request(`/packets/meetings/${meetingId}/assignments`, {
+    method: 'POST', body: JSON.stringify({ resident_id: residentId }),
+  });
+
+export const randomizePacketMeeting = (meetingId) =>
+  request(`/packets/meetings/${meetingId}/randomize`, { method: 'POST' });
+
+export const setPacketGroup = (assignmentId, studyGroup, reason = null) =>
+  request(`/packets/assignments/${assignmentId}/group`, {
+    method: 'PUT', body: JSON.stringify({ study_group: studyGroup, reason }),
+  });
+
+export const setPacketPeriod = (assignmentId, overrideStart, overrideEnd) =>
+  request(`/packets/assignments/${assignmentId}/period`, {
+    method: 'PUT',
+    body: JSON.stringify({ override_start: overrideStart || null, override_end: overrideEnd || null }),
+  });
+
+export const generatePackets = (meetingId, assignmentIds = null, model = null) =>
+  request(`/packets/meetings/${meetingId}/generate`, {
+    method: 'POST', body: JSON.stringify({ assignment_ids: assignmentIds, model }),
+  });
+
+export const withholdPacket = (packetId, reason) =>
+  request(`/packets/${packetId}/withhold`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const downloadPacket = (packetId) =>
+  downloadFile(`/packets/${packetId}/pdf`, 'packet.pdf');
+
+export const downloadPacketBatch = (meetingId, advisorId = null) =>
+  downloadFile(
+    `/packets/meetings/${meetingId}/download${advisorId ? `?advisor_id=${advisorId}` : ''}`,
+    'packets.zip',
   );

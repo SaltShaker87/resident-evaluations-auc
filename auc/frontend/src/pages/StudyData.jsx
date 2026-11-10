@@ -31,6 +31,14 @@ const EXPORTS = [
     desc: 'One row per prior action item checked in a later meeting: whether the room '
         + 'recalled it unprompted, and whether you had to surface it.',
   },
+  {
+    key: 'packets',
+    label: 'Advisor packets',
+    desc: 'One row per advisor packet generated: study group (and the group randomization '
+        + 'gave), review period, evidence counts, model and app version, when it was first '
+        + 'downloaded, and whether it was withheld. Advisors appear only as advisor codes '
+        + '(A01, A02, …).',
+  },
 ];
 
 export default function StudyData({ showToast }) {
@@ -82,6 +90,7 @@ export default function StudyData({ showToast }) {
             <div><strong>{stats.contributions}</strong> contribution{stats.contributions === 1 ? '' : 's'}</div>
             <div><strong>{stats.action_items}</strong> action item{stats.action_items === 1 ? '' : 's'}</div>
             <div><strong>{stats.action_item_checks}</strong> recall check{stats.action_item_checks === 1 ? '' : 's'}</div>
+            <div><strong>{stats.packets ?? 0}</strong> advisor packet{stats.packets === 1 ? '' : 's'}</div>
           </div>
         ) : (
           <div className="text-sm text-muted">Could not load totals.</div>
@@ -96,7 +105,8 @@ export default function StudyData({ showToast }) {
             <div className="settings-row__desc">
               Off by default. The exports carry only coded values — the free-text fields
               (what the room raised, contribution details, pushback notes, closing notes,
-              action item text) are left out of the file entirely. Turn this on only if
+              action item text, reasons for changing a packet group or withholding a
+              packet) are left out of the file entirely. Turn this on only if
               your analysis needs the narrative, and treat the result as identifiable.
             </div>
           </div>

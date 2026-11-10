@@ -33,6 +33,10 @@ FORBIDDEN_COLUMNS = {
     "medical_school",
     "interests",
     "support_system",
+    # Advisor packets: advisors appear only as advisor_code (A01, …).
+    "advisor_id",
+    "advisor_name",
+    "name",
 }
 
 # Free text, emitted only when include_text=True.
@@ -43,6 +47,8 @@ TEXT_COLUMNS = {
     "detail",
     "item_text",
     "owner",
+    "group_change_reason",
+    "withheld_reason",
 }
 
 
@@ -105,6 +111,7 @@ def totals(conn):
         "contributions": count("SELECT COUNT(*) FROM ccc_contributions WHERE voided = 0"),
         "action_items": count("SELECT COUNT(*) FROM ccc_action_items"),
         "action_item_checks": count("SELECT COUNT(*) FROM ccc_action_item_checks"),
+        "packets": count("SELECT COUNT(*) FROM packets"),
     }
 
 
@@ -390,3 +397,89 @@ def session_json(conn, session_id):
         "action_items": items,
         "action_item_checks": checks,
     }
+
+
+# ---------------------------------------------------------------------------
+# packets.csv — one row per generated advisor packet
+# ---------------------------------------------------------------------------
+
+_PACKETS_SQL = """
+SELECT
+    p.id                                AS packet_id,
+    p.study_code,
+    p.advisor_code,
+    p.meeting_date,
+    p.cutoff_date,
+    p.study_group,
+    p.randomized_group,
+    p.randomization_seed,
+    CASE WHEN p.group_changed_at IS NOT NULL THEN 1 ELSE 0 END AS group_changed,
+    p.group_changed_at,
+    pa.added_late,
+    pa.moved_from_meeting_date,
+    p.period_start,
+    p.period_end,
+    p.period_basis,
+    p.n_comments,
+    p.n_evaluators,
+    p.n_rotations,
+    p.n_late,
+    p.pgy_year_at_cutoff,
+    p.model,
+    p.app_version,
+    p.retrieval_engine,
+    p.packet_format_version,
+    p.show_levels,
+    p.generated_at,
+    p.first_downloaded_at,
+    p.withheld,
+    -- A resident's packet can be generated again; this is the one in force.
+    CASE WHEN pa.packet_id = p.id THEN 1 ELSE 0 END AS is_current,
+    p.group_change_reason,
+    p.withheld_reason
+FROM packets p
+LEFT JOIN packet_assignments pa ON pa.id = p.assignment_id
+ORDER BY p.meeting_date, p.advisor_code, p.study_code, p.generated_at, p.rowid
+"""
+
+_PACKETS_BASE = [
+    "packet_id",
+    "study_code",
+    "advisor_code",
+    "meeting_date",
+    "cutoff_date",
+    "study_group",
+    "randomized_group",
+    "randomization_seed",
+    "group_changed",
+    "group_changed_at",
+    "added_late",
+    "moved_from_meeting_date",
+    "period_start",
+    "period_end",
+    "period_basis",
+    "n_comments",
+    "n_evaluators",
+    "n_rotations",
+    "n_late",
+    "pgy_year_at_cutoff",
+    "model",
+    "app_version",
+    "retrieval_engine",
+    "packet_format_version",
+    "show_levels",
+    "generated_at",
+    "first_downloaded_at",
+    "withheld",
+    "is_current",
+]
+
+_PACKETS_TEXT = ["group_change_reason", "withheld_reason"]
+
+
+def packets(conn, include_text=False):
+    columns = list(_PACKETS_BASE)
+    if include_text:
+        columns += _PACKETS_TEXT
+    rows = [_select(row, columns) for row in conn.execute(_PACKETS_SQL).fetchall()]
+    return _check_columns(columns, include_text), rows

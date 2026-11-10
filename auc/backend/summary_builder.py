@@ -13,7 +13,7 @@ model only fills in slots**:
      ACGME descriptor text and only its own comments. The descriptor is reference
      material for forming a judgment; the prompt forbids reusing its language.
   4. Sub-competencies with no routed evidence are filled in by Python as
-     "no evidence this cycle" — no model call at all.
+     "no evidence in this review period" — no model call at all.
   5. Every quote the model returns is checked verbatim (case-insensitive) against the
      comments actually routed to that sub-competency. Quotes that don't check out are
      dropped, and if nothing survives, the narrative and level are discarded rather
@@ -22,6 +22,11 @@ model only fills in slots**:
      than fit in one prompt is read in parts, and the verified findings of the parts
      are merged in one more call. Every reply is also checked for signs that Ollama
      cut its prompt anyway; one that shows them is discarded, never shown.
+
+For an advisor packet the same rules produce one more thing: for each of the six
+ACGME competencies, a "strengths" and a "growth areas" statement (see "Six
+competencies" below). The six come from the ontology, one call each, only the
+comments routed to that competency's sub-competencies, every quote verified.
 
 Every dropped quote, discarded narrative, split and cut prompt is written to
 auc/data/logs/summary_validation.log for inspection.
@@ -78,7 +83,17 @@ USE_OLLAMA_JSON_FORMAT: bool = True
 MAX_QUOTES: int = 3
 
 # Marks a stored summary as the structured format (vs. the older markdown blobs).
+# v2 is v1 plus what the summary covers: its review period, evidence scope, counts,
+# MedHub snapshot, PGY year at the cutoff, app version and retrieval engine, and for
+# a packet the six-competency statements. A summary with no period ("All time") is
+# still written as v1, exactly as before. Both are read everywhere.
 REPORT_SCHEMA: str = "auc.summary.v1"
+REPORT_SCHEMA_V2: str = "auc.summary.v2"
+REPORT_SCHEMAS = (REPORT_SCHEMA, REPORT_SCHEMA_V2)
+
+# Most quotes shown for one strength or growth area of a competency. Fewer than a
+# sub-competency's, so the six fit near one page.
+COMPETENCY_MAX_QUOTES: int = 2
 
 LOG_DIR = DATA_DIR / "logs"
 VALIDATION_LOG = LOG_DIR / "summary_validation.log"
@@ -89,7 +104,8 @@ STATUS_NO_EVIDENCE = "no_evidence"
 STATUS_INSUFFICIENT = "insufficient_evidence"
 STATUS_FAILED = "generation_failed"
 
-NO_EVIDENCE_TEXT = "No evidence this cycle"
+NO_EVIDENCE_TEXT = "No evidence in this review period"
+COMPETENCY_EMPTY_TEXT = "Not enough evidence in this review period"
 
 
 # ---------------------------------------------------------------------------
@@ -622,9 +638,12 @@ def _prepare_sync(comments, engine):
     descriptors). Raises rag_retrieval.RagUnavailable.
     """
     ontology = rag_retrieval.load_ontology()
-    collection = rag_retrieval.open_collection(engine)
-
     skeleton = build_skeleton(ontology)
+    if not comments:
+        # Nothing to route: every section is "no evidence", and the index is not needed.
+        return skeleton, {}, {}
+
+    collection = rag_retrieval.open_collection(engine)
     known_ids = {e["id"] for e in skeleton}
 
     routed = rag_retrieval.route_comments(comments, ontology, collection, engine)
@@ -650,18 +669,25 @@ def sse(event, data):
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def generate_report(resident_id, resident_label, comments, model=None, *, engine):
+async def generate_report(resident_id, resident_label, comments, model=None, *, engine,
+                          metadata=None, competencies=False):
     """Async generator yielding (event_name, payload) tuples.
 
     Emits `start` with the full skeleton, one `subcompetency` per section as it
-    completes, and a final `done`. A fatal problem emits `error` and stops.
+    completes, with competencies=True one `competency` per ACGME competency after
+    them, and a final `done`. A fatal problem emits `error` and stops.
 
     engine is the retrieval engine in force. It is written into every log line,
     so the validation log records which engine routed each summary.
+
+    metadata, when given, describes what the summary covers (its review period and
+    so on). It is stored in the report, which then has schema v2. It never reaches
+    the model.
     """
     logger = get_logger()
     effective_model = model or SUMMARY_MODEL
     summary_id = str(uuid.uuid4())[:8]
+    schema = REPORT_SCHEMA_V2 if metadata is not None else REPORT_SCHEMA
     log_prefix = f"[resident={resident_id} summary={summary_id} engine={engine}]"
 
     try:
@@ -677,7 +703,8 @@ async def generate_report(resident_id, resident_label, comments, model=None, *, 
         yield "error", {"message": f"Retrieval failed: {e}"}
         return
 
-    total = len(skeleton)
+    domains = _competency_entries(skeleton) if competencies else []
+    total = len(skeleton) + len(domains)
     logger.info(
         "%s RUN START model=%s resident=%s comments=%d total_subcompetencies=%d "
         "routing=%s",
@@ -687,6 +714,8 @@ async def generate_report(resident_id, resident_label, comments, model=None, *, 
 
     yield "start", {
         "summary_id": summary_id,
+        "schema": schema,
+        "metadata": metadata,
         "resident": resident_label,
         "model": effective_model,
         "total": total,
@@ -730,15 +759,33 @@ async def generate_report(resident_id, resident_label, comments, model=None, *, 
                 "total": total,
             }
 
+        competency_blocks = []
+        for entry in domains:
+            evidence = _competency_comments(skeleton, routed, entry["domain"])
+            if not evidence:
+                block = _empty_competency(entry, STATUS_NO_EVIDENCE)
+            else:
+                block = await _generate_competency(
+                    client, effective_model, resident_label, entry, evidence, logger,
+                    log_prefix,
+                )
+            competency_blocks.append(block)
+            completed += 1
+            yield "competency", {**block, "completed": completed, "total": total}
+
     logger.info("%s RUN END counts=%s", log_prefix, counts)
 
     report = {
-        "schema": REPORT_SCHEMA,
+        "schema": schema,
         "resident": resident_label,
         "model": effective_model,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "sections": sections,
     }
+    if competencies:
+        report["competencies"] = competency_blocks
+    if metadata is not None:
+        report.update({k: v for k, v in metadata.items() if k not in report})
 
     yield "done", {
         "summary_id": summary_id,
@@ -765,18 +812,22 @@ async def _generate_one(
     )
 
 
-async def _call_and_validate(client, model, entry, prompt, comments, logger, log_prefix, tag):
+async def _call_and_validate(client, model, entry, prompt, comments, logger, log_prefix, tag,
+                             validate=None, empty=None):
     """One call: send, parse (with one retry), validate against `comments`.
 
     tag names the call in the log: the sub-competency id, or e.g. "PC1 part 2/3".
+    validate and empty default to a sub-competency's; a competency passes its own.
     """
+    validate = validate or validate_section
+    empty = empty or _empty_section
     for attempt in (1, 2):
         attempt_prompt = prompt if attempt == 1 else prompt + _RETRY_SUFFIX
         try:
             raw = await call_ollama(client, model, attempt_prompt)
         except httpx.ConnectError as e:
             logger.error("%s %s OLLAMA UNREACHABLE: %s", log_prefix, tag, e)
-            return _empty_section(entry, STATUS_FAILED, "Could not reach Ollama")
+            return empty(entry, STATUS_FAILED, "Could not reach Ollama")
         except PromptTruncated as e:
             # No retry: the same prompt would be cut the same way. The reply is not
             # parsed, so nothing the model wrote from a cut prompt can be shown.
@@ -785,13 +836,13 @@ async def _call_and_validate(client, model, entry, prompt, comments, logger, log
                 "— reply discarded",
                 log_prefix, tag, e.evaluated, e.estimated, OLLAMA_OPTIONS["num_ctx"],
             )
-            return _empty_section(entry, STATUS_FAILED, "Ollama cut the prompt short")
+            return empty(entry, STATUS_FAILED, "Ollama cut the prompt short")
         except Exception as e:
             logger.error(
                 "%s %s REQUEST FAILED (attempt %d): %s", log_prefix, tag, attempt, e
             )
             if attempt == 2:
-                return _empty_section(entry, STATUS_FAILED, "Model request failed")
+                return empty(entry, STATUS_FAILED, "Model request failed")
             continue
 
         try:
@@ -805,11 +856,11 @@ async def _call_and_validate(client, model, entry, prompt, comments, logger, log
                 logger.info("%s %s RETRY", log_prefix, tag)
                 continue
             logger.info("%s %s GENERATION FAILED after retry", log_prefix, tag)
-            return _empty_section(entry, STATUS_FAILED, "Could not parse model output")
+            return empty(entry, STATUS_FAILED, "Could not parse model output")
 
-        return validate_section(entry, parsed, comments, logger, log_prefix, tag)
+        return validate(entry, parsed, comments, logger, log_prefix, tag)
 
-    return _empty_section(entry, STATUS_FAILED, "Could not parse model output")
+    return empty(entry, STATUS_FAILED, "Could not parse model output")
 
 
 async def _generate_split(
@@ -913,4 +964,297 @@ async def _generate_split(
         section["dropped_quote_count"] = dropped
         return section
 
+    return {**findings[0], "dropped_quote_count": dropped}
+
+
+# ---------------------------------------------------------------------------
+# Six competencies — strengths and growth areas, for advisor packets
+# ---------------------------------------------------------------------------
+#
+# The same rules as a sub-competency section: Python owns the structure (the six
+# competencies come from the ontology, never from the model), one call per
+# competency containing only the comments routed to its sub-competencies, every
+# quote checked verbatim, nothing shown that lost all its quotes, and a competency
+# with too many comments read in parts. The difference is the shape of the reply:
+# two statements, each with its own quotes.
+
+COMPETENCY_PARTS = ("strengths", "growth_areas")
+COMPETENCY_PART_NAMES = {"strengths": "STRENGTHS", "growth_areas": "GROWTH AREAS"}
+
+
+def _competency_entries(skeleton):
+    """The six competencies in display order, from the skeleton (so from the ontology)."""
+    entries, seen = [], set()
+    for sub in skeleton:
+        if sub["domain"] not in seen:
+            seen.add(sub["domain"])
+            entries.append({
+                "id": sub["domain"], "name": sub["domain_name"],
+                "domain": sub["domain"], "domain_name": sub["domain_name"],
+            })
+    return entries
+
+
+def _competency_comments(skeleton, routed, domain):
+    """Comments routed to any sub-competency of `domain`, each once, in routing order."""
+    out, seen = [], set()
+    for sub in skeleton:
+        if sub["domain"] != domain:
+            continue
+        for comment in routed.get(sub["id"], []):
+            key = (comment.get("text"), comment.get("label"))
+            if key not in seen:
+                seen.add(key)
+                out.append(comment)
+    return out
+
+
+def _empty_competency(entry, status, note=None):
+    return {
+        "id": entry["id"],
+        "name": entry["name"],
+        "domain": entry["domain"],
+        "domain_name": entry["domain_name"],
+        "status": status,
+        "strengths": None,
+        "growth_areas": None,
+        "note": note if note is not None else (
+            COMPETENCY_EMPTY_TEXT if status in (STATUS_NO_EVIDENCE, STATUS_INSUFFICIENT) else None
+        ),
+        "dropped_quote_count": 0,
+    }
+
+
+_COMPETENCY_REPLY_SHAPE = (
+    '{"strengths": {"text": "...", "quotes": ["exact snippet"]}, '
+    '"growth_areas": {"text": "...", "quotes": ["exact snippet"]}}'
+)
+
+
+def _competency_rules(source):
+    return (
+        "Rules:\n"
+        f"- Do not state anything the {source} do not support. Do not invent rotations, "
+        "events, dates, patients, or behaviors.\n"
+        "- Do not describe trends or changes over time.\n"
+        "- If nothing above supports a strength, or nothing supports a growth area, leave "
+        "that text empty and its quotes empty. Do not turn praise into a growth area or "
+        "criticism into a strength.\n"
+        f"- For each, in \"quotes\", copy 1 to {COMPETENCY_MAX_QUOTES} short snippets "
+        f"from the {source} above that support it, character for character, exactly as "
+        "written. Do not fix typos, do not re-punctuate, do not shorten with ellipses. A "
+        "snippet that is not an exact copy will be discarded, and a statement with no "
+        "exact snippet is not shown.\n\n"
+        "Respond with a single JSON object and nothing else. No markdown, no code "
+        "fences, no explanation before or after:\n"
+        f"{_COMPETENCY_REPLY_SHAPE}"
+    )
+
+
+def build_competency_prompt(resident_label, entry, comments, part=None):
+    """The prompt for one competency's strengths and growth areas.
+
+    Contains only the comments routed to this competency's sub-competencies. part is
+    (first, last, total) when the comments are one part of too many for one prompt.
+    """
+    first = part[0] if part else 1
+    numbered = "\n".join(
+        f"{i}. {(c.get('text') or '').strip()}" for i, c in enumerate(comments, start=first)
+    )
+    if part:
+        heading = (
+            f"COMMENTS about this resident that were routed to this competency — comments "
+            f"{part[0]} to {part[1]} of {part[2]}. The others are being read separately, so "
+            f"write only about these:\n"
+        )
+    else:
+        heading = "COMMENTS about this resident that were routed to this competency:\n"
+
+    return (
+        f"You are drafting ONE competency of an advisor's summary about {resident_label}, "
+        f"written from their evaluations.\n\n"
+        f"COMPETENCY: {entry['name']}\n\n"
+        f"{heading}{numbered}\n\n"
+        "Write two short statements about THIS resident in this competency, in your own "
+        "words, based only on the comments above:\n"
+        "- STRENGTHS: 1 to 3 sentences on what the resident does well.\n"
+        "- GROWTH AREAS: 1 to 3 sentences on what the resident should work on.\n\n"
+        + _competency_rules("comments")
+    )
+
+
+def build_competency_combine_prompt(resident_label, entry, findings):
+    """Merge the verified findings of a competency read in parts."""
+    blocks = []
+    for i, finding in enumerate(findings, start=1):
+        lines = [f"PART {i}"]
+        for key in COMPETENCY_PARTS:
+            block = finding.get(key)
+            if not block:
+                lines.append(f"{COMPETENCY_PART_NAMES[key].title()}: none found")
+                continue
+            quotes = "\n".join(f"- {' '.join(q['text'].split())}" for q in block["quotes"])
+            lines.append(f"{COMPETENCY_PART_NAMES[key].title()}: {block['text']}")
+            lines.append(f"VERIFIED QUOTES:\n{quotes}")
+        blocks.append("\n".join(lines))
+
+    return (
+        f"You are drafting ONE competency of an advisor's summary about {resident_label}, "
+        f"written from their evaluations.\n\n"
+        f"COMPETENCY: {entry['name']}\n\n"
+        f"There were too many comments to read at once, so they were read in "
+        f"{len(findings)} parts. This is what each part found:\n\n"
+        + "\n\n".join(blocks)
+        + "\n\nWrite two short statements about THIS resident in this competency, in your "
+        "own words, that combine these findings. If the parts disagree, say so.\n"
+        "- STRENGTHS: 1 to 3 sentences.\n"
+        "- GROWTH AREAS: 1 to 3 sentences.\n\n"
+        "Do not mention the parts.\n"
+        + _competency_rules("VERIFIED QUOTES")
+    )
+
+
+def validate_competency(entry, parsed, comments, logger, log_prefix, tag=None):
+    """Keep each statement only if at least one of its quotes is verbatim in the
+    competency's comments. A competency with neither surviving is insufficient."""
+    tag = tag or entry["id"]
+    result = _empty_competency(entry, STATUS_INSUFFICIENT)
+    dropped = 0
+
+    for key in COMPETENCY_PARTS:
+        raw = parsed.get(key)
+        if isinstance(raw, str):
+            raw = {"text": raw, "quotes": []}
+        if not isinstance(raw, dict):
+            continue
+        text = raw.get("text")
+        text = text.strip() if isinstance(text, str) else ""
+        raw_quotes = raw.get("quotes")
+        if isinstance(raw_quotes, str):
+            raw_quotes = [raw_quotes]
+        elif not isinstance(raw_quotes, list):
+            raw_quotes = []
+        if not text and not raw_quotes:
+            continue  # the model said there was nothing to say: not a drop
+
+        kept, seen = [], set()
+        for raw_quote in raw_quotes:
+            match = find_verbatim(raw_quote, comments) if isinstance(raw_quote, str) else None
+            if match is None:
+                dropped += 1
+                logger.info(
+                    "%s %s %s DROPPED QUOTE (not found verbatim in routed comments): %s",
+                    log_prefix, tag, key, _flat(str(raw_quote)),
+                )
+                continue
+            quote_text, source = match
+            if quote_text.lower() in seen:
+                continue
+            seen.add(quote_text.lower())
+            kept.append({"text": quote_text, "source": source})
+            if len(kept) >= COMPETENCY_MAX_QUOTES:
+                break
+
+        if not kept or not text:
+            logger.info(
+                "%s %s DISCARDED %s (%s): %s",
+                log_prefix, tag, key,
+                "zero quotes survived validation" if not kept else "text was empty",
+                _flat(text, 800),
+            )
+            continue
+        result[key] = {"text": text, "quotes": kept}
+
+    result["dropped_quote_count"] = dropped
+    if result["strengths"] or result["growth_areas"]:
+        result["status"] = STATUS_OK
+        result["note"] = None
+    return result
+
+
+async def _generate_competency(client, model, resident_label, entry, evidence, logger,
+                               log_prefix):
+    """One competency: one call if its comments fit, else in parts, then merged."""
+    tag = f"COMPETENCY {entry['id']}"
+    prompt = build_competency_prompt(resident_label, entry, evidence)
+    estimated = estimate_tokens(prompt)
+    if estimated <= PROMPT_TOKEN_BUDGET:
+        return await _call_and_validate(
+            client, model, entry, prompt, evidence, logger, log_prefix, tag,
+            validate=validate_competency, empty=_empty_competency,
+        )
+
+    total = len(evidence)
+
+    def part_fits(run, first):
+        part = (first + 1, first + len(run), total)
+        return estimate_tokens(build_competency_prompt(resident_label, entry, run, part)) \
+            <= PROMPT_TOKEN_BUDGET
+
+    parts = _split_evenly(
+        evidence, part_fits, start=max(2, math.ceil(estimated / PROMPT_TOKEN_BUDGET))
+    )
+    if parts is None:
+        logger.error("%s %s TOO LONG: a single comment does not fit in one prompt", log_prefix, tag)
+        return _empty_competency(entry, STATUS_FAILED, "A comment is too long to summarize")
+
+    logger.info(
+        "%s %s SPLIT into %d parts (%d comments; estimated %d prompt tokens, budget %d)",
+        log_prefix, tag, len(parts), total, estimated, PROMPT_TOKEN_BUDGET,
+    )
+
+    dropped = 0
+    findings = []
+    for index, (first, run) in enumerate(parts, start=1):
+        prompt = build_competency_prompt(
+            resident_label, entry, run, (first + 1, first + len(run), total)
+        )
+        block = await _call_and_validate(
+            client, model, entry, prompt, run, logger, log_prefix,
+            f"{tag} part {index}/{len(parts)}",
+            validate=validate_competency, empty=_empty_competency,
+        )
+        dropped += block["dropped_quote_count"]
+        if block["status"] == STATUS_FAILED:
+            logger.info("%s %s GENERATION FAILED (part %d of %d failed)",
+                        log_prefix, tag, index, len(parts))
+            return {**block, "dropped_quote_count": dropped}
+        if block["status"] == STATUS_OK:
+            findings.append(block)
+
+    def merge_fits(run, _first):
+        return estimate_tokens(build_competency_combine_prompt(resident_label, entry, run)) \
+            <= PROMPT_TOKEN_BUDGET
+
+    merge_round = 0
+    while len(findings) > 1:
+        merge_round += 1
+        groups = _split_evenly(findings, merge_fits)
+        if groups is None or len(groups) == len(findings):
+            logger.error("%s %s TOO LONG: %d findings cannot be merged within the budget",
+                         log_prefix, tag, len(findings))
+            return _empty_competency(entry, STATUS_FAILED, "Too much evidence to summarize")
+        merged = []
+        for index, (_first, group) in enumerate(groups, start=1):
+            if len(group) == 1:
+                merged.append(group[0])
+                continue
+            prompt = build_competency_combine_prompt(resident_label, entry, group)
+            block = await _call_and_validate(
+                client, model, entry, prompt, evidence, logger, log_prefix,
+                f"{tag} merge {merge_round}.{index}",
+                validate=validate_competency, empty=_empty_competency,
+            )
+            dropped += block["dropped_quote_count"]
+            if block["status"] == STATUS_FAILED:
+                logger.info("%s %s GENERATION FAILED (merge failed)", log_prefix, tag)
+                return {**block, "dropped_quote_count": dropped}
+            if block["status"] == STATUS_OK:
+                merged.append(block)
+        findings = merged
+
+    if not findings:
+        block = _empty_competency(entry, STATUS_INSUFFICIENT)
+        block["dropped_quote_count"] = dropped
+        return block
     return {**findings[0], "dropped_quote_count": dropped}
